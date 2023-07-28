@@ -10,11 +10,13 @@ Note
 To initialize the main functions in a spine-analysis script use:
 >>> from spine-analysis.Environment import *
 """
+__title__     = 'spinpipe'
+__version__   = '0.1.0'
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2022 by Luke Hammond'
-__webpage__   = 'http://cellularimaging.org'
-__download__  = 'http://www.github.com/lahmmond/spine-analysis'
+__download__  = 'http://www.github.com/lahmmond/spinepipe'
+
 
 ###############################################################################
 ### Python
@@ -26,7 +28,7 @@ import sys
 import os    
 
 import tifffile
-import pims
+#import pims
 import time
 
 import numpy as np                
@@ -49,11 +51,13 @@ from IPython.display import clear_output, display
 #Utilities
 
 #Main
-import spineanalyis.Main.Main as main
+import spinepipe.Main.Main as main
+import spinepipe.Main.Timer as timer
 
 
 #image processing
-import spineanalysis.ImageAnalysis.ImageAnalysis as imgan
+import spinepipe.ImageAnalysis.ImageAnalysis as imgan
+import spinepipe.ImageAnalysis.Validation as val
 
 
 #analysis
@@ -63,8 +67,8 @@ import spineanalysis.ImageAnalysis.ImageAnalysis as imgan
 ### All
 ###############################################################################
 
-__all__ = ['sys', 'os', 'tifffile', 'pims', 'time', 'np',
+__all__ = ['sys', 'os', 'tifffile', 'time', 'np',
            'plt', 'figure', 'exposure', 
            'segmentation', 'imread', 'imsave', 'imshow',  'util', 'img_as_ubyte',
            'ndi', 'clear_output',
-           'display', 'main', 'imgan'];
+           'display', 'main', 'timer', 'imgan', 'val'];
