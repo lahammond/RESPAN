@@ -1,18 +1,23 @@
-# spine-analysis
-Python tool for spine detection and analysis
+# SpinePipe
+An efficient and accessible spine analysis pipeline leveraging the latest advancements in U-Net segmentation and GPU processing. 
+To enable ease of use, this pipeline is made available as python code and as a standalone installation for Windows (requires NVIDIA GPU and CUDA)
 
-- We can come up with a better name for the pipeline once it takes shape!
+Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia University).
 
-Currently:
-- initial notebook discussed in meeting
-- Resnet34 model - https://www.dropbox.com/s/8snm87e0pgu1thv/2023_05_spine_2D%20256x256_resnet34_V3_2.h5?dl=0
+## SpinePipe
+- GUI based automatic segmentation of spines and dendrites
+- 3D morphological and intensity measurements
+- 3D spatial relationships
+- tabular and image outputs, including validation images, to ensure accuracy
+- Spine Arrays - extract each spine as a 3D volume for visualization and further machine learning training of spine morphological features and spine classification
 
-To include/update:
-- simplified notebook for training sm u-net
-- simplified notebook for segmenting images with u-net and performing basic analysis of spines
-- Test performance of nnUnet - switch to this method for training and inference if better (initial tests look good!) - https://www.nature.com/articles/s41592-020-01008-z
-- segmentation of dendrite (3D Unet, binary mask and skeleton outputs)
-- automatic isolation of primary dendrite and exclude other dendrites/spines (size/length followed by distance transform)
-- detection of spine neck
-- Extract spine MIPs or 3D volumes for classification into spine type (mushroom, stubby, thin, filopodia...) 
-- GUI for selecting folders, models, and analysis parameters 
+## SpinePipe Validation Tool
+- perform automated quantitative assessment of the performance of the trained U-Net model and SpinePipe pipeline
+- validate and readily evaluate improvements to the pipeline models using ground-truth data
+
+## SpinePipe Model Training Tool (soon)
+- simplified GUI-based tool to facilitate training of new nnUnet models
+
+## Future updates:
+- spine neck analysis
+- track spine morphology and signal intensity over time
