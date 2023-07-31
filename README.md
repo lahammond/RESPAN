@@ -1,6 +1,6 @@
 # SpinePipe
 An efficient and accessible spine analysis pipeline leveraging the latest advancements in U-Net segmentation and GPU processing. 
-To enable ease of use, this pipeline is made available as python code and as a standalone installation for Windows (requires an NVIDIA GPU)
+To enable ease of use, this pipeline is made available as python code and as a standalone installation for Windows (requires an NVIDIA GPU).
 
 Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia University).
 
