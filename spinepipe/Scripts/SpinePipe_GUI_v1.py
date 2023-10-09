@@ -4,7 +4,7 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.0'
+__version__   = '0.9.1'
 __date__      = "25 July, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
@@ -12,18 +12,19 @@ __copyright__ = 'Copyright © 2023 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'
 
 import sys
-import os
+#import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
                              QPushButton, QCheckBox, QLabel, QLineEdit, 
                              QMessageBox, QTextEdit, QWidget, QFileDialog, 
-                             QGridLayout,QHBoxLayout, QGroupBox, QProgressBar)
+                             QGridLayout,QHBoxLayout, QGroupBox, QProgressBar, QSplashScreen,QFrame)
 from PyQt5.QtCore import Qt, pyqtSlot, QTime, QThread, pyqtSignal, QTimer, QObject
-from PyQt5.QtGui import QTextCursor
+from PyQt5.QtGui import QTextCursor, QPixmap, QPainter, QColor, QFont, QPalette
 
 import pickle
 import logging
 from datetime import datetime
-import time
+#import time
+
 
 class QtHandler(logging.Handler, QObject):
     log_generated = pyqtSignal(str)
@@ -75,13 +76,17 @@ class Logger:
 class Worker(QThread):
     task_done = pyqtSignal(str)
 
-    def __init__(self, spinepipe, directory, other_options, GPU_block, spine_vol, logger):
+    def __init__(self, spinepipe, directory, other_options, GPU_block, spine_vol, spine_dist, HistMatch, Track, logger):
+        
         super().__init__()
         self.spinepipe = spinepipe
         self.directory = directory
         self.other_options = other_options
         self.GPU_block = GPU_block
         self.spine_vol = spine_vol
+        self.spine_dist = spine_dist
+        self.HistMatch = HistMatch
+        self.Track = Track
         self.logger = logger
         
 
@@ -117,6 +122,9 @@ class Worker(QThread):
             #settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
             settings.GPU_block_size = self.GPU_block
             settings.neuron_spine_size = self.spine_vol
+            settings.neuron_spine_dist = self.spine_dist
+            settings.HistMatch = self.HistMatch
+            settings.Track = self.Track
 
 
             self.logger.info("Processing folder: "+self.directory)
@@ -134,7 +142,7 @@ class Worker(QThread):
             imgan.analyze_spines(settings, locations, log, self.logger)
             
             self.logger.info("SpinePipe analysis complete.")
-            self.logger.info("\nSpinePipe Version: "+__version__)
+            self.logger.info("SpinePipe Version: "+__version__)
             self.logger.info("Release Date: "+__date__+"") 
             self.logger.info("Created by: "+__author__+"") 
             self.logger.info("Zuckerman Institute, Columbia University\n") 
@@ -149,6 +157,24 @@ class Worker(QThread):
         except Exception as e:
             self.logger.error(f"An error occurred: {e}", exc_info=True)
             self.task_done.emit("An error occurred.")
+
+class Splash(QSplashScreen):
+    def __init__(self, text, time_to_show):
+        pixmap = QPixmap(500, 300)  # Set your pixmap's size.
+        pixmap.fill(Qt.transparent)  # You can set the background color here.
+        
+        # QPainter for drawing the text on the pixmap.
+        painter = QPainter(pixmap)
+        painter.setFont(QFont("Arial", 30))  # Set the font, size.
+        painter.setPen(QColor(Qt.white))  # Set the color.
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, text)  # Draw the text.
+        painter.end()
+        
+        super().__init__(pixmap)
+        
+        # QTimer to close the splash screen after 'time_to_show' milliseconds.
+        QTimer.singleShot(time_to_show, self.close)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
@@ -170,7 +196,9 @@ class MainWindow(QMainWindow):
         self.directory_button = QPushButton("Select data directory")
         self.directory_button.clicked.connect(self.get_directories)
         
-
+        self.line = QFrame()
+        self.line.setFrameShape(QFrame.HLine)
+        self.line.setFrameShadow(QFrame.Sunken)
 
         options_group = QGroupBox("Cell Analysis Options")
         options_layout = QVBoxLayout()
@@ -197,8 +225,19 @@ class MainWindow(QMainWindow):
         self.integer_input = QLineEdit("150,500,500")
         self.integer_label_2 = QLabel("Spine volume filter (min, max volume in voxels):")
         self.integer_input_2 = QLineEdit("3,1500")
-
+        self.integer_label_3 = QLabel("Spine distance from dendrite filter (max distance in voxels):")
+        self.integer_input_3 = QLineEdit("650")
+        self.HistMatch = QCheckBox("Histogram Matching (matches image histograms to first image in the series)")
+        self.HistMatch.setChecked(False) 
+        self.Track = QCheckBox("Spine Tracking (track spines over time, folder should contain sperate volumes for each timepoint)")
+        self.Track.setChecked(False) 
+        
+        
+        
         options_layout2.addWidget(self.save_intermediate)
+
+        options_layout2.addWidget(self.HistMatch)
+        options_layout2.addWidget(self.Track)
 
         
 
@@ -206,23 +245,33 @@ class MainWindow(QMainWindow):
         self.run_button = QPushButton("Run")
         self.run_button.clicked.connect(self.run_function)
         run_cancel_layout.addWidget(self.run_button)
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QPushButton("Close")
         self.cancel_button.clicked.connect(self.close)
         run_cancel_layout.addWidget(self.cancel_button)
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
         
+        #self.ground_truth_dir_button.setFixedWidth(300)
+        self.directory_button.setFixedWidth(300)
+        #self.run_button.setFixedWidth(300)
+        #self.cancel_button.setFixedWidth(300)
 
-        layout.addWidget(self.spinepipedir_label)
+
         layout.addWidget(self.spinepipedir_button)
-        layout.addWidget(self.directory_label)
+        layout.addWidget(self.spinepipedir_label)
         layout.addWidget(self.directory_button)
+        layout.addWidget(self.directory_label)
+        layout.addWidget(self.line)
+
         layout.addWidget(options_group2)
         layout.addWidget(self.integer_label)
         layout.addWidget(self.integer_input)
         layout.addWidget(self.integer_label_2)
         layout.addWidget(self.integer_input_2)
+        layout.addWidget(self.integer_label_3)
+        layout.addWidget(self.integer_input_3)
+
        
         #layout.addWidget(options_group)
  
@@ -307,6 +356,22 @@ class MainWindow(QMainWindow):
             self.progress.setVisible(False)
             return
         
+        try:
+            spine_vol = list(map(int, self.integer_input_2.text().split(',')))
+        except ValueError:
+            QMessageBox.critical(self, "Error", "Invalid input for spine volume.")
+            self.progress.setVisible(False)
+            return
+        
+        try:
+            spine_dist =  int(self.integer_input_3.text())
+        except ValueError:
+            QMessageBox.critical(self, "Error", "Invalid input for spine distance to dendrite.")
+            self.progress.setVisible(False)
+            return
+        
+        HistMatch = self.HistMatch.isChecked()
+        Track = self.Track.isChecked()
         
         directory =  directory + "/"
         
@@ -321,7 +386,8 @@ class MainWindow(QMainWindow):
 
 
         #self.worker = Worker(spinepipe, directory, channel_options, integers, self.logger.get_logger())
-        self.worker = Worker(spinepipe, directory, other_options, GPU_block, spine_vol, self.logger)
+        self.worker = Worker(spinepipe, directory, other_options, GPU_block, spine_vol, spine_dist, HistMatch, Track, self.logger)
+       
         self.worker.task_done.connect(self.on_task_done)
         self.worker.start() 
 
@@ -343,6 +409,34 @@ class MainWindow(QMainWindow):
         
     
 app = QApplication([])
+
+#app.setStyleSheet(qss)
+app.setStyle("Fusion")
+
+palette = QPalette()
+palette.setColor(QPalette.Window, QColor(230, 230, 230))
+palette.setColor(QPalette.WindowText, QColor(0, 0, 0))
+palette.setColor(QPalette.Base, QColor(255, 255, 255))
+palette.setColor(QPalette.AlternateBase, QColor(204, 204, 204))
+palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 255))
+palette.setColor(QPalette.ToolTipText, QColor(0, 0, 0))
+palette.setColor(QPalette.Text, QColor(0, 0, 0))
+palette.setColor(QPalette.Button, QColor(204, 204, 204))
+palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
+palette.setColor(QPalette.BrightText, QColor(255, 0, 0))
+palette.setColor(QPalette.Link, QColor(0, 102, 153))
+palette.setColor(QPalette.Highlight, QColor(0, 102, 153))
+palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+
+app.setPalette(palette)
+
+
+splash = Splash("SpinePipe is loading...", 3000)
+splash.show()
+
+# Ensures that the application is fully up and running before closing the splash screen
+app.processEvents()
+
 window = MainWindow()
 window.setWindowTitle(f'SpinePipe - Version: {__version__}')
 window.setGeometry(100, 100, 1200, 800)  

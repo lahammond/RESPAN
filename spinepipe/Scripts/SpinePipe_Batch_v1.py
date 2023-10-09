@@ -6,7 +6,7 @@ Batch Processing Script
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.0'
+__version__   = '0.9.1'
 __date__      = "25 July, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
@@ -89,6 +89,9 @@ for data_dir in data_dirs:
     settings.save_intermediate_data = True
     settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
     settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
+    settings.neuron_spine_dist = 650
+    settings.HistMatch = False
+    settings.Track = False
     
     settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/spinepipe/Models/Dataset022_SpinesDendrites/"
     settings.seg_model = ("nnUnet","")

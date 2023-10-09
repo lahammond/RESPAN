@@ -39,5 +39,7 @@ nnUnet:
     preprocessed: D:\nnUnet\preprocessed
     results: D:\nnUnet\results
     type: 3d_fullres
+    conda_path: C:/Users/Luke_H\Anaconda3
+    env: spineanalysis
 
 

@@ -173,5 +173,5 @@ class Create_Settings():
             self.nnUnet_preprocessed = setting["nnUnet"]["preprocessed"]
             self.nnUnet_results = setting["nnUnet"]["results"]
             self.nnUnet_type = setting["nnUnet"]["type"]
-
-
+            self.nnUnet_conda_path = setting["nnUnet"]["conda_path"]
+            self.nnUnet_env = setting["nnUnet"]["env"]

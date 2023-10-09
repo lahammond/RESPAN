@@ -6,7 +6,7 @@ Image Analysis tools and functions for spine analysis
 
 """
 __title__     = 'spinpipe'
-__version__   = '0.9.0'
+__version__   = '0.9.1'
 __date__      = "25 July, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
@@ -27,15 +27,15 @@ import warnings
 import re
 import shutil
 
-import spinepipe.Main.Main as main
-import spinepipe.Main.Timer as timer
+#import spinepipe.Main.Main as main
+#import spinepipe.Main.Timer as timer
 
 #import segmentation_models as sm
 #from keras.models import load_model
 #from patchify import patchify, unpatchify
 
 import subprocess
-from subprocess import Popen, PIPE
+#from subprocess import Popen, PIPE
 
 #from tqdm import tqdm
 
@@ -45,13 +45,13 @@ import cupy as cp
 
 #import cv2
 import tifffile
-from skimage.io import imread, imsave, imshow, util
+from skimage.io import imread #, util #imsave, imshow,
 
-from math import trunc
+#from math import trunc
 
 import skimage.io
-from skimage.transform import rescale
-from skimage import color, data, filters, measure, morphology, segmentation, util, exposure, restoration
+#from skimage.transform import rescale
+from skimage import measure, morphology, segmentation, exposure #util,  color, data, filters,  exposure, restoration 
 from skimage.measure import label
 from scipy import ndimage
 
@@ -59,7 +59,7 @@ import gc
 #import cupy as cp
 
 #import matplotlib.pyplot as plt
-import logging
+#import logging
 
 
 
@@ -96,6 +96,7 @@ def restore_neuron (inputdir, settings, locations, logger):
         image = check_image_shape(image, logger)
         neuron = image[:,settings.neuron_channel-1,:,:]
         
+    
         #load restoration model
         logger.info(f"Restoration model = {locations.rest_model_path}")
         """
@@ -167,6 +168,11 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     files = sorted(files)
         
     #Prepare Raw data for nnUnet
+    
+    # Initialize reference to None - if using histogram matching
+    logger.info(f"Histogram Matching is set to = {settings.HistMatch}")
+    reference_image = None
+    
     for file in range(len(files)):
         logger.info(f" Preparing images {file+1} of {len(files)} - {files[file]}")
 
@@ -176,6 +182,16 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
         image = check_image_shape(image, logger)
         
         neuron = image[:,settings.neuron_channel-1,:,:]
+        
+        if settings.HistMatch == True:
+            # If reference_image is None, it's the first image.
+            if reference_image is None:
+                neuron = contrast_stretch(neuron, pmin=0, pmax=100)
+                reference_image = neuron
+            else:
+               # Match histogram of current image to the reference image
+               neuron = exposure.match_histograms(neuron, reference_image)    
+            
         
         #save neuron as a tif file in nnUnet_input - if file doesn't end with 0000 add that at the end
         name, ext = os.path.splitext(files[file])
@@ -191,7 +207,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
             skimage.io.imsave(filepath, neuron.astype(np.uint16), plugin='tifffile', photometric='minisblack')
             
     #Run nnUnet over prepared files
-    initialize_nnUnet(settings)
+    #initialize_nnUnet(settings)
     
     # split the path into subdirectories
     subdirectories = os.path.normpath(settings.neuron_seg_model_path).split(os.sep)
@@ -203,17 +219,105 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
 
     
     logger.info("\nPerforming U-Net segmentation of neurons...")
-    result = subprocess.run(['nnUNetv2_predict', '-i', locations.nnUnet_input, '-o', locations.labels, '-d', dataset_id, '-c', settings.nnUnet_type, '--save_probabilities', '-f', 'all'], capture_output=True, text=True)
+    
+    
+    #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
+    
+    stdout = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, 
+                                locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings)
+    
+    
+    
+    
+    #result = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, locations,settings)
+    
+    
+    # Add environment to the system path
+    #os.environ["PATH"] = settings.nnUnet_env_path + os.pathsep + os.environ["PATH"]
 
-    logger.info(result.stdout)  # This is the standard output of the command.
+    #python = settings.nnUnet_env_path+"/python.exe"
+
+    #result = subprocess.run(['nnUNetv2_predict', '-i', locations.nnUnet_input, '-o', locations.labels, '-d', dataset_id, '-c', settings.nnUnet_type, '--save_probabilities', '-f', 'all'], capture_output=True, text=True)
+    #command = 'nnUNetv2_predict -i ' + locations.nnUnet_input + ' -o ' + locations.labels + ' -d ' + dataset_id + ' -c ' + settings.nnUnet_type + ' --save_probabilities -f all']
+    
+    #command = [python, "-m", "nnUNetv2_predict", "-i", locations.nnUnet_input, "-o", locations.labels, "-d", dataset_id, "-c", settings.nnUnet_type, "--save_probabilities", "-f", "all"]
+    #result = run_command_in_conda_env(command, settings.env ,settings.python)
+    #result = subprocess.run(command, capture_output=True, text=True)
+
+    #logger.info(result.stdout)  # This is the standard output of the command.
     #logger.info(result.stderr)  # This is the error output of the command.  
+    logger.info(stdout)
     #delete nnunet input folder and files
-    if os.path.exists(locations.nnUnet_input):
-        shutil.rmtree(locations.nnUnet_input)
+    
+    #if os.path.exists(locations.nnUnet_input):
+        #shutil.rmtree(locations.nnUnet_input)
+    #Clean up label folder
+
+    if os.path.exists(locations.labels):
+        # iterate over all files in the directory
+        for filename in os.listdir(locations.labels):
+            # check if the file is not a .tif file
+            if not filename.endswith('.tif'):
+                # construct full file path
+                file_path = os.path.join(locations.labels, filename)
+                # remove the file
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
     
     logger.info("Segmentation complete.\n")
-    return result.stderr
+    return stdout
 
+def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id, nnunet_type, settings):
+    # Set environment variables
+    
+    initialize_nnUnet(settings)
+    
+    activate_env = fr"{conda_dir}\Scripts\activate.bat && set PATH={conda_dir}\envs\{nnUnet_env}\Scripts;%PATH%"
+
+    # Define the command to be run
+    cmd = "nnUNetv2_predict -i {} -o {} -d {} -c {} --save_probabilities -f all".format(input_dir, output_dir, dataset_id, nnunet_type)
+
+       
+    # Combine the activate environment command with the actual command
+    final_cmd = f'{activate_env} && {cmd}'
+
+    # Run the command
+    process = subprocess.Popen(final_cmd, shell=True)
+    stdout, stderr = process.communicate()
+    return stdout
+    
+def run_nnunet_predict_bat(path, env, input_dir, output_dir, dataset_id, nnunet_type,locations, settings):
+    # Define the batch file content
+    batch_file_content = f"""@echo off
+    CALL {path}\\Scripts\\activate.bat\nconda activate {env}
+    set nnUNet_raw={settings.nnUnet_raw}
+    set nnUNet_preprocessed={settings.nnUnet_preprocessed}
+    set nnUNet_results={settings.nnUnet_results}
+    nnUNetv2_predict -i "{input_dir}" -o "{output_dir}" -d {dataset_id} -c {nnunet_type} --save_probabilities -f all"""
+    
+    # Define the batch file path
+    batch_file_path = locations.input_dir+"run_nnunet.bat"
+
+    # Write the content to the batch file
+    with open(batch_file_path, "w") as batch_file:
+        batch_file.write(batch_file_content)
+
+    # Define the command to execute the batch file
+    command = [batch_file_path]
+
+    # Execute the batch file
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    # Delete the batch file
+    #os.remove(batch_file_path)
+
+    return result
+
+def run_command_in_conda_env(command, env, python):
+    #command = f"{python} activate {env} && {command}"
+    #command = 
+    result = subprocess.run(command, capture_output=True, text=True, shell=True)
+    return result
 
 def initialize_nnUnet(settings):
     os.environ['nnUNet_raw'] = settings.nnUnet_raw
@@ -257,8 +361,8 @@ def analyze_spines(settings, locations, log, logger):
         neuron = image[:,settings.neuron_channel-1,:,:]
 
         
-        spines = (labels == 1).astype(np.uint8)
-        dendrites = (labels == 2).astype(np.uint8)
+        spines = (labels == 1)
+        dendrites = (labels == 2)
         #soma = (image == 3).astype(np.uint8)
         
         #Create Distance Map
@@ -278,7 +382,7 @@ def analyze_spines(settings, locations, log, logger):
     
     
         #Measurements
-        spine_table, summary, spines_filtered = spine_measurements(image, spine_labels, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings, locations, files[file], logger)
+        spine_table, summary, spines_filtered = spine_measurements(image, spine_labels, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, files[file], logger)
                                                           #soma_mask, soma_distance, )
         
         # update summary with additional metrics
@@ -392,7 +496,7 @@ def spine_detection(spines, holes, logger):
     return spines_clean
 
 
-def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, settings, locations, filename, logger):
+def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
     """ measures intensity of each channel, as well as distance to dendrite
     Args:
         labels (detected cells)
@@ -468,7 +572,14 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, setti
     logger.info(f" Filtering spines between size {volume_min} and {volume_max} voxels...")
     
 
+    #filter based on volume
     filtered_table = main_table[(main_table['area'] > volume_min) & (main_table['area'] < volume_max) ] 
+    
+    #filter based on distance to dendrite
+    logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
+    
+    filtered_table = filtered_table[(filtered_table['dist_to_dendrite'] < dist)] 
+    
     #create vol um measurement
     filtered_table.insert(5, 'spine_vol_um3', filtered_table['area'] * (settings.input_resXY*settings.input_resXY*settings.input_resZ))
     filtered_table.rename(columns={'area': 'spine_vol'}, inplace=True)
@@ -695,3 +806,7 @@ def create_spine_arrays_in_blocks(image, labels_filtered, table, volume_size, se
     #reenable pandas warning:
     pd.options.mode.chained_assignment = original_chained_assignment
     return mip_array, slice_z_array, mip_label_filtered_array, slice_before_mip_array
+
+def contrast_stretch(image, pmin=2, pmax=98):
+    p2, p98 = np.percentile(image, (pmin, pmax))
+    return exposure.rescale_intensity(image, in_range=(p2, p98))

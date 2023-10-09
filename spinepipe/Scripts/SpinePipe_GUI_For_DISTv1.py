@@ -76,12 +76,13 @@ class Logger:
 class Worker(QThread):
     task_done = pyqtSignal(str)
 
-    #def __init__(self, spinepipe, ground_truth, analysis_output, logger):
-    def __init__(self, ground_truth, analysis_output, logger):
+    def __init__(self, directory, other_options, GPU_block, spine_vol, logger):
         super().__init__()
         #self.spinepipe = spinepipe
-        self.ground_truth = ground_truth
-        self.analysis_output = analysis_output
+        self.directory = directory
+        self.other_options = other_options
+        self.GPU_block = GPU_block
+        self.spine_vol = spine_vol
         self.logger = logger
         
 
@@ -91,42 +92,50 @@ class Worker(QThread):
         try:
             
             #sys.path.append(self.spinepipe)
-            from spinepipe.Environment import main, val
+            from spinepipe.Environment import main, imgan, timer
             main.check_gpu()
             #Load in experiment parameters and analysis settings   
-            #settings, locations = main.initialize_spinepipe(self.analysis_output)
+            settings, locations = main.initialize_spinepipe(self.directory)
         
             #import spinepipe.Environment
             
-            log_path = self.analysis_output +'SpinePipe_Validation_Log' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'
+            log_path = self.directory +'SpinePipe_Log' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'
             self.logger.set_log_file(log_path)  # Note: we're not passing a log_display, because it's not thread-safe
             
         
-            self.logger.info("SpinePipe Validation Tool - Version: "+__version__)
+            self.logger.info("SpinePipe Version: "+__version__)
             self.logger.info("Release Date: "+__date__) 
             self.logger.info("Created by: "+__author__+"")
             self.logger.info("Zuckerman Institute, Columbia University\n")
               
            
             #Load in experiment parameters and analysis settings   
-            settings, locations = main.initialize_spinepipe_validation(self.analysis_output)
+            settings, locations = main.initialize_spinepipe(self.directory)
             
-            
-            self.logger.info("Processing folder: "+self.analysis_output)
+            #Modify specific parameters and settings:    
+            settings.save_intermediate_data = self.other_options
+            #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
+            #settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
+            settings.GPU_block_size = self.GPU_block
+            settings.neuron_spine_size = self.spine_vol
+
+
+            self.logger.info("Processing folder: "+self.directory)
             self.logger.info(f" Image resolution: {settings.input_resXY}um XY, {settings.input_resZ}um Z")
             self.logger.info(f" Model used: {settings.neuron_seg_model_path}")    
             self.logger.info(f" Model resolution: {settings.neuron_seg_model_res[0]}um XY, {settings.neuron_seg_model_res[2]}um Z")    
             self.logger.info(f" Spine volume set to: {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
             self.logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
             
+            self.logger.info(f" {settings.neuron_seg_model_path}um Z")
             #Processing
             
-            val.validate_analysis(self.ground_truth, self.analysis_output, settings, locations, self.logger)
+            log = imgan.restore_and_segment(self.directory, settings, locations, self.logger)
             
-          
+            imgan.analyze_spines(settings, locations, log, self.logger)
             
-            self.logger.info("Validation complete.")
-            self.logger.info("SpinePipe Validation Tool - Version: "+__version__)
+            self.logger.info("SpinePipe analysis complete.")
+            self.logger.info("SpinePipe Version: "+__version__)
             self.logger.info("Release Date: "+__date__+"") 
             self.logger.info("Created by: "+__author__+"") 
             self.logger.info("Zuckerman Institute, Columbia University\n") 
@@ -159,10 +168,10 @@ class Splash(QSplashScreen):
         # QTimer to close the splash screen after 'time_to_show' milliseconds.
         QTimer.singleShot(time_to_show, self.close)
 
+
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
-
 
         widget = QWidget()
         layout = QVBoxLayout() 
@@ -171,53 +180,87 @@ class MainWindow(QMainWindow):
 
         self.logger = Logger()
 
+
         #self.spinepipedir_label = QLabel("No SpinePipe directory selected.")
         #self.spinepipedir_button = QPushButton("Select SpinePipe directory")
-        #self.spinepipedir_button.clicked.connect(self.get_spinepipedir)        
-
-        self.ground_truth_dir_label = QLabel("No ground truth data directory selected.")
-        self.ground_truth_dir_button = QPushButton("Select ground truth data directory")
-        self.ground_truth_dir_button.clicked.connect(self.get_ground_truth_dir)
+        #self.spinepipedir_button.clicked.connect(self.get_spinepipedir)
         
-        self.directory_label = QLabel("No analysis output directory selected.")
-        self.directory_button = QPushButton("Select data analysis output directory")
+        self.directory_label = QLabel("No directory selected.")
+        self.directory_button = QPushButton("Select data directory")
         self.directory_button.clicked.connect(self.get_directories)
         
         self.line = QFrame()
         self.line.setFrameShape(QFrame.HLine)
         self.line.setFrameShadow(QFrame.Sunken)
- 
-        self.integer_label = QLabel("Please ensure the Analysis_Settings.csv is in the folder of analysis outputs you wish to validate.")
-        
-        
+        self.info_label = QLabel("Ensure the correct Analysis_Settings.csv is included in the folder you wish to process.")
+        self.line2 = QFrame()
+        self.line2.setFrameShape(QFrame.HLine)
+        self.line2.setFrameShadow(QFrame.Sunken)
+
+        options_group = QGroupBox("Cell Analysis Options")
+        options_layout = QVBoxLayout()
+        options_group.setLayout(options_layout)
+        self.analyze1 = QCheckBox("Analyze Channel 1")
+        self.analyze1.setChecked(True) 
+        self.analyze2 = QCheckBox("Analyze Channel 2")
+        self.analyze2.setChecked(True) 
+        self.analyze3 = QCheckBox("Analyze Channel 3")
+        self.analyze3.setChecked(True) 
+        self.analyze4 = QCheckBox("Analyze Channel 4")
+        self.analyze4.setChecked(True) 
+        options_layout.addWidget(self.analyze1)
+        options_layout.addWidget(self.analyze2)
+        options_layout.addWidget(self.analyze3)
+        options_layout.addWidget(self.analyze4)
+
+        options_group2 = QGroupBox("Options")
+        options_layout2 = QVBoxLayout()
+        options_group2.setLayout(options_layout2)
+        self.save_intermediate = QCheckBox("Save intermediate data")
+        self.save_intermediate.setChecked(True) 
+        self.integer_label = QLabel("GPU block size (decrease block size if processing fails):")
+        self.integer_input = QLineEdit("150,500,500")
+        self.integer_label_2 = QLabel("Spine volume filter (min, max volume in voxels):")
+        self.integer_input_2 = QLineEdit("3,1500")
+
+        options_layout2.addWidget(self.save_intermediate)
+
         
 
         run_cancel_layout = QHBoxLayout()
         self.run_button = QPushButton("Run")
         self.run_button.clicked.connect(self.run_function)
         run_cancel_layout.addWidget(self.run_button)
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QPushButton("Close")
         self.cancel_button.clicked.connect(self.close)
         run_cancel_layout.addWidget(self.cancel_button)
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
-
-
-        self.ground_truth_dir_button.setFixedWidth(300)
+        
+        #self.ground_truth_dir_button.setFixedWidth(300)
         self.directory_button.setFixedWidth(300)
+        #self.run_button.setFixedWidth(300)
+        #self.cancel_button.setFixedWidth(300)
 
-        #layout.addWidget(self.spinepipedir_label)
+
         #layout.addWidget(self.spinepipedir_button)
-        layout.addWidget(self.ground_truth_dir_button)
-        layout.addWidget(self.ground_truth_dir_label)
+        #layout.addWidget(self.spinepipedir_label)
         layout.addWidget(self.directory_button)
         layout.addWidget(self.directory_label)
-
         layout.addWidget(self.line)
 
+        layout.addWidget(self.info_label)
+        layout.addWidget(self.line2)
+
+        layout.addWidget(options_group2)
         layout.addWidget(self.integer_label)
+        layout.addWidget(self.integer_input)
+        layout.addWidget(self.integer_label_2)
+        layout.addWidget(self.integer_input_2)
+       
         #layout.addWidget(options_group)
+ 
 
         layout.addLayout(run_cancel_layout)
         layout.addWidget(self.progress)
@@ -229,19 +272,6 @@ class MainWindow(QMainWindow):
  
         self.logger.qt_handler.log_generated.connect(self.update_log_display)
 
-        #try:
-        #    with open('last_dir2.pickle', 'rb') as f:
-        #        last_dir2 = pickle.load(f)
-        #        self.spinepipedir_label.setText(f"Selected directory: {last_dir2}")
-        #except (FileNotFoundError, EOFError, pickle.PickleError):
-        #    pass  # If we can't load the last directory2 path, just ignore the error
-
-        try:
-            with open('last_dir3.pickle', 'rb') as f:
-                last_dir3 = pickle.load(f)
-                self.ground_truth_dir_label.setText(f"Selected directory: {last_dir3}")
-        except (FileNotFoundError, EOFError, pickle.PickleError):
-            pass  # If we can't load the last directory2 path, just ignore the error
 
         
         try:
@@ -251,31 +281,18 @@ class MainWindow(QMainWindow):
         except (FileNotFoundError, EOFError, pickle.PickleError):
             pass  # If we can't load the last directory path, just ignore the error
             
+        #try:
+        #    with open('last_dir2.pickle', 'rb') as f:
+        #        last_dir2 = pickle.load(f)
+        #        self.spinepipedir_label.setText(f"Selected directory: {last_dir2}")
+        #except (FileNotFoundError, EOFError, pickle.PickleError):
+        #    pass  # If we can't load the last directory2 path, just ignore the error
 
 
-    @pyqtSlot()
-    def get_spinepipedir(self):
-        spinepipedir = QFileDialog.getExistingDirectory(self, 'Select SpinePipe directory')
-        if spinepipedir:
-            self.spinepipedir_label.setText(f"Selected directory: {spinepipedir}")
-    
-            # Save the selected directory2 path
-            with open('last_dir2.pickle', 'wb') as f:
-                pickle.dump(spinepipedir, f)
-                
-    @pyqtSlot()
-    def get_ground_truth_dir(self):
-        ground_truth_dir = QFileDialog.getExistingDirectory(self, 'Select ground truth data directory')
-        if ground_truth_dir:
-            self.ground_truth_dir_label.setText(f"Selected directory: {ground_truth_dir}")
-    
-            # Save the selected directory2 path
-            with open('last_dir3.pickle', 'wb') as f:
-                pickle.dump(ground_truth_dir, f)
-                
+
     @pyqtSlot()
     def get_directories(self):
-        directory = QFileDialog.getExistingDirectory(self, 'Select data analysis output directory')
+        directory = QFileDialog.getExistingDirectory(self, 'Select data directory')
         if directory:
             self.directory_label.setText(f"Selected directory: {directory}")
 
@@ -283,7 +300,15 @@ class MainWindow(QMainWindow):
             with open('last_dir.pickle', 'wb') as f:
                 pickle.dump(directory, f)
     
-    
+    @pyqtSlot()
+    def get_spinepipedir(self):
+        spinepipedir = QFileDialog.getExistingDirectory(self, 'Select spinepipe directory')
+        if spinepipedir:
+            self.spinepipedir_label.setText(f"Selected directory: {spinepipedir}")
+
+            # Save the selected directory2 path
+            with open('last_dir2.pickle', 'wb') as f:
+                pickle.dump(spinepipedir, f)
 
     @pyqtSlot()
     def run_function(self):
@@ -291,33 +316,39 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(True)
         self.progress.setRange(0, 0)  # Set to busy mode
         
-        
+        directory = self.directory_label.text().replace("Selected directory: ", "")
+        if directory == "No directory selected.":
+            QMessageBox.critical(self, "Error", "No directory selected.")
+            self.progress.setVisible(False)
+            return
+
         #spinepipe = self.spinepipedir_label.text().replace("Selected directory: ", "")
-        #if spinepipe == "No SpinePipe directory selected.":
+        #if spinepipe == "No directory selected.":
         #    QMessageBox.critical(self, "Error", "No directory selected.")
         #    self.progress.setVisible(False)
         #    return
-
         
-        ground_truth = self.ground_truth_dir_label.text().replace("Selected directory: ", "")
-        if ground_truth == "No ground truth directory selected.":
-            QMessageBox.critical(self, "Error", "No directory selected.")
+        try:
+            GPU_block = list(map(int, self.integer_input.text().split(',')))
+        except ValueError:
+            QMessageBox.critical(self, "Error", "Invalid input for GPU block.")
+            self.progress.setVisible(False)
+            return
+        
+        try:
+            spine_vol = list(map(int, self.integer_input_2.text().split(',')))
+        except ValueError:
+            QMessageBox.critical(self, "Error", "Invalid input for spine volume.")
             self.progress.setVisible(False)
             return
         
         
-        directory = self.directory_label.text().replace("Selected directory: ", "")
-        if directory == "No analysis output directory selected.":
-            QMessageBox.critical(self, "Error", "No directory selected.")
-            self.progress.setVisible(False)
-            return
+        directory =  directory + "/"
         
-        #spinepipe = spinepipe +"/"
+        spinepipe = spinepipe +"/"
         
-        ground_truth = ground_truth +"/"
-        
-        analysis_output =  directory + "/"
-        
+        #channel_options = [self.analyze1.isChecked(), self.analyze2.isChecked(), self.analyze3.isChecked(),self.analyze4.isChecked()]
+        other_options = [self.save_intermediate.isChecked()]
         
         if hasattr(self, 'worker') and self.worker.isRunning():
             self.worker.task_done.disconnect(self.on_task_done)
@@ -325,8 +356,8 @@ class MainWindow(QMainWindow):
 
 
         #self.worker = Worker(spinepipe, directory, channel_options, integers, self.logger.get_logger())
-        #self.worker = Worker(spinepipe, ground_truth, analysis_output, self.logger)
-        self.worker = Worker(ground_truth, analysis_output, self.logger)
+        #self.worker = Worker(spinepipe, directory, other_options, GPU_block, spine_vol, self.logger)
+        self.worker = Worker(directory, other_options, GPU_block, spine_vol, self.logger)
         self.worker.task_done.connect(self.on_task_done)
         self.worker.start() 
 
@@ -345,37 +376,7 @@ class MainWindow(QMainWindow):
         # Disconnect the signals when done
         #self.worker.task_done.disconnect(self.on_task_done)
         #self.logger.qt_handler.log_generated.disconnect(self.update_log_display)
-
-            
-qss = '''
-QWidget {
-    color: #b1b1b1;
-    background-color: #323232;
-}
-QPushButton {
-    background-color: #5a5a5a;
-    border: none;
-    color: white;
-}
-QPushButton:hover {
-    background-color: #727272;
-}
-QTextEdit {
-    background-color: #242424;
-}
-QPushButton {
-    font-family: "Helvetica";
-    font-size: 16px;
-    min-height: 30px;
-
-}
-QLabel {
-    font-family: "Helvetica";
-    font-size: 16px;
-    min-height: 30px;
-}
-'''
-
+        
     
 app = QApplication([])
 
@@ -407,7 +408,7 @@ splash.show()
 app.processEvents()
 
 window = MainWindow()
-window.setWindowTitle(f'SpinePipe Validation - Version: {__version__}')
+window.setWindowTitle(f'SpinePipe - Version: {__version__}')
 window.setGeometry(100, 100, 1200, 800)  
 window.show()
 sys.exit(app.exec_())
