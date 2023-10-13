@@ -368,6 +368,7 @@ def analyze_spines(settings, locations, log, logger):
         #Create Distance Map
 
         dendrite_distance = ndimage.distance_transform_edt(np.invert(dendrites)) #invert neuron mask to get outside distance  
+        dendrites = dendrites.astype(np.uint8)
         skeleton = morphology.skeletonize_3d(dendrites)
         #if settings.save_val_data == True:
         #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
@@ -553,14 +554,17 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
         measure.regionprops_table(
             labels,
             intensity_image=dendrite_distance,
-            properties=['label', 'min_intensity'], #area is volume for 3D images
+            properties=['label', 'min_intensity', 'max_intensity'], #area is volume for 3D images
         )
     )
 
     #rename distance column
     distance_table.rename(columns={'min_intensity':'dist_to_dendrite'}, inplace=True)
+    distance_table.rename(columns={'max_intensity':'spine_length'}, inplace=True)
+    
     distance_col = distance_table["dist_to_dendrite"]
-
+    main_table = main_table.join(distance_col)
+    distance_col = distance_table["spine_length"]
     main_table = main_table.join(distance_col)
     
 
@@ -584,6 +588,11 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     filtered_table.insert(5, 'spine_vol_um3', filtered_table['area'] * (settings.input_resXY*settings.input_resXY*settings.input_resZ))
     filtered_table.rename(columns={'area': 'spine_vol'}, inplace=True)
     
+    #create dist um cols
+    filtered_table.insert(9, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY*settings.input_resXY))
+    
+    filtered_table.insert(11, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY*settings.input_resXY))
+    
     
     labels = create_filtered_labels_image(labels, filtered_table)
 
@@ -599,6 +608,9 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     summary_stats['avg_spine_vol'] = summary_stats.pop('spine_vol')  # Rename 'area' to 'Volume'
     summary_stats['avg_spine_vol_um3'] = summary_stats.pop('spine_vol_um3')  # Rename 'area' to 'Volume'
     summary_stats['avg_dist_to_dendrite'] = summary_stats.pop('dist_to_dendrite') 
+    summary_stats['avg_spine_length'] = summary_stats.pop('spine_length') 
+    summary_stats['avg_dist_to_dendrite_um'] = summary_stats.pop('dist_to_dendrite_um') 
+    summary_stats['avg_spine_length_um'] = summary_stats.pop('spine_length_um') 
     
     summary_stats['avg_C1_mean_int'] = summary_stats.pop('C1_mean_int')  
     summary_stats['avg_C1_max_int'] = summary_stats.pop('C1_max_int')  

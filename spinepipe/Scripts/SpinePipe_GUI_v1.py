@@ -238,6 +238,13 @@ class MainWindow(QMainWindow):
 
         options_layout2.addWidget(self.HistMatch)
         options_layout2.addWidget(self.Track)
+        
+        options_layout2.addWidget(self.integer_label)
+        options_layout2.addWidget(self.integer_input)
+        options_layout2.addWidget(self.integer_label_2)
+        options_layout2.addWidget(self.integer_input_2)
+        options_layout2.addWidget(self.integer_label_3)
+        options_layout2.addWidget(self.integer_input_3)
 
         
 
@@ -265,12 +272,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.line)
 
         layout.addWidget(options_group2)
-        layout.addWidget(self.integer_label)
-        layout.addWidget(self.integer_input)
-        layout.addWidget(self.integer_label_2)
-        layout.addWidget(self.integer_input_2)
-        layout.addWidget(self.integer_label_3)
-        layout.addWidget(self.integer_input_3)
+    
 
        
         #layout.addWidget(options_group)
