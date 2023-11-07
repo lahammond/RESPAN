@@ -123,16 +123,22 @@ class HiddenPrints:
         sys.stdout = self._original_stdout
 
 class Create_Locations():
-  def __init__(self, data_dir):
-      self.input_dir = data_dir
-      self.validation_dir =  data_dir+"Validation_Data/"
-      self.labels =  data_dir+"Validation_Data/Segmentation_Labels/"
-      self.restored =  data_dir+"Validation_Data/Restored_Images/"
-      self.MIPs =  data_dir+"Validation_Data/Validation_MIPs/"
-      self.tables = data_dir+"Tables/"
-      self.plots = data_dir+"Plots/"
-      self.arrays = data_dir+"Spine_Arrays/"
-      self.nnUnet_input = data_dir+"nnUnet_input/"
+    def __init__(self, data_dir):
+        self.input_dir = data_dir
+        self.validation_dir =  data_dir+"Validation_Data/"
+        self.labels =  data_dir+"Validation_Data/Segmentation_Labels/"
+        self.restored =  data_dir+"Validation_Data/Restored_Images/"
+        self.MIPs =  data_dir+"Validation_Data/Validation_MIPs/"
+        self.tables = data_dir+"Tables/"
+        self.plots = data_dir+"Plots/"
+        self.arrays = data_dir+"Spine_Arrays/"
+        self.nnUnet_input = data_dir+"nnUnet_input/"
+      
+    def inspect(self):
+        for attr_name in dir(self):
+            if not callable(getattr(self, attr_name)) and not attr_name.startswith("__"):
+                value = getattr(self, attr_name)
+                print(f"{attr_name}: {value}")
 
 
 class Create_Settings():
@@ -175,3 +181,10 @@ class Create_Settings():
             self.nnUnet_type = setting["nnUnet"]["type"]
             self.nnUnet_conda_path = setting["nnUnet"]["conda_path"]
             self.nnUnet_env = setting["nnUnet"]["env"]
+    
+    def inspect(self):
+        for attr_name in dir(self):
+            if not callable(getattr(self, attr_name)) and not attr_name.startswith("__"):
+                value = getattr(self, attr_name)
+                print(f"{attr_name}: {value}")
+

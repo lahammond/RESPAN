@@ -6,7 +6,7 @@ Image Analysis tools and functions for spine analysis
 
 """
 __title__     = 'spinpipe'
-__version__   = '0.9.0'
+__version__   = '0.9.2'
 __date__      = "25 Sept, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'

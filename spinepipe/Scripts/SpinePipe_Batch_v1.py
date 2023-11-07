@@ -6,9 +6,9 @@ Batch Processing Script
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.1'
-__date__      = "25 July, 2023"
-__author__    = 'Luke Hammond <lh2881@columbia.edu>'
+__version__   = '0.9.3'
+__date__      = "6 November, 2023"
+__author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'
@@ -48,7 +48,7 @@ main.check_gpu()
 
 #Dataset Directories
 
-data_dirs = ["D:/Project_Data/SpineAnalysis/Testing/FastTest2/"] #,
+data_dirs = ["D:/Project_Data/SpineAnalysis/1 Spinning Disk Data/Original/"] #,
             # "D:/Project_Data/SpineAnalysis/Testing/FastTest2"]
 
 
@@ -80,11 +80,11 @@ for data_dir in data_dirs:
     logger.info("SpinePipe Version: "+__version__)
     logger.info("Release Date: "+__date__) 
     logger.info("Created by: "+__author__+"")
-    logger.info("Zuckerman Institute, Columbia University\n")
+    logger.info("Department of Neurology, The Ohio State University\nZuckerman Institute, Columbia University\n")    
   
     #Load in experiment parameters and analysis settings   
     settings, locations = main.initialize_spinepipe(data_dir)
-    
+     
     #Modify specific parameters and settings:    
     settings.save_intermediate_data = True
     settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
@@ -116,7 +116,7 @@ for data_dir in data_dirs:
     logger.info("\nSpinePipe Version: "+__version__)
     logger.info("Release Date: "+__date__) 
     logger.info("Created by: "+__author__+"")    
-    logger.info("Zuckerman Institute, Columbia University\n")    
+    logger.info("Department of Neurology, The Ohio State University\nZuckerman Institute, Columbia University\n")    
     
     logger.info("--------------------------------------------------------------------")
     

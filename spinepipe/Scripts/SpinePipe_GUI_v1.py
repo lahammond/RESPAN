@@ -4,8 +4,8 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.1'
-__date__      = "25 July, 2023"
+__version__   = '0.9.3'
+__date__      = "6 November, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -145,6 +145,7 @@ class Worker(QThread):
             self.logger.info("SpinePipe Version: "+__version__)
             self.logger.info("Release Date: "+__date__+"") 
             self.logger.info("Created by: "+__author__+"") 
+            self.logger.info("Department of Neurology, The Ohio State University\n")
             self.logger.info("Zuckerman Institute, Columbia University\n") 
             self.logger.info("--------------------------------------------------------------------")
             
@@ -433,7 +434,7 @@ palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
 app.setPalette(palette)
 
 
-splash = Splash("SpinePipe is loading...", 3000)
+splash = Splash(" SpinePipe is loading...", 3000)
 splash.show()
 
 # Ensures that the application is fully up and running before closing the splash screen

@@ -6,7 +6,7 @@ Image Analysis tools and functions for spine analysis
 
 """
 __title__     = 'spinpipe'
-__version__   = '0.9.1'
+__version__   = '0.9.2'
 __date__      = "25 July, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
@@ -25,7 +25,7 @@ import math
 #import time
 import warnings
 import re
-import shutil
+#import shutil
 
 #import spinepipe.Main.Main as main
 #import spinepipe.Main.Timer as timer
@@ -45,13 +45,15 @@ import cupy as cp
 
 #import cv2
 import tifffile
-from skimage.io import imread #, util #imsave, imshow,
+#from skimage.io import imread #, util #imsave, imshow,
+from tifffile import imread as imread
 
 #from math import trunc
 
-import skimage.io
+#import skimage.io
 #from skimage.transform import rescale
 from skimage import measure, morphology, segmentation, exposure #util,  color, data, filters,  exposure, restoration 
+from skimage.transform import resize
 from skimage.measure import label
 from scipy import ndimage
 
@@ -154,12 +156,27 @@ def check_image_shape(image,logger):
             logger.info(f"Channels moved ZCYX - raw data now has shape {image.shape}") #ImageJ supports TZCYX order 
     else:
         image = np.expand_dims(image, axis=1)
-    
+            
     return image
             
 
 def nnunet_create_labels(inputdir, settings, locations, logger):
     logger.info(f"\nCreating dendrite and spine masks...\n")
+    settings.shape_error = False
+    settings.rescale_req = False
+    
+    #check if rescaling required and create scaling factors
+    if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
+        logger.info(f" Images will be rescaled to match network.")
+        
+        settings.rescale_req = True
+        #z in / z desired, y in / desired ...
+        settings.scaling_factors = (settings.input_resZ/settings.neuron_seg_model_res[2],
+                          settings.input_resXY/settings.neuron_seg_model_res[1], 
+                          settings.input_resXY/settings.neuron_seg_model_res[0])
+        #settings.inverse_scaling_factors = tuple(1/np.array(settings.scaling_factors))
+        
+        logger.info(f" Scaling factors: Z = {settings.scaling_factors[0]} Y = {settings.scaling_factors[1]} X = {settings.scaling_factors[2]} ") 
     
     #data can be raw data OR restored data so check channels
     files = [file_i
@@ -170,19 +187,49 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     #Prepare Raw data for nnUnet
     
     # Initialize reference to None - if using histogram matching
-    logger.info(f"Histogram Matching is set to = {settings.HistMatch}")
+    logger.info(f" Histogram Matching is set to = {settings.HistMatch}\n")
     reference_image = None
+    
+    #create empty arrays to capture dims and padding info
+    settings.original_shape = [None] * len(files)
+    settings.padding_req = np.zeros(len(files))
     
     for file in range(len(files)):
         logger.info(f" Preparing images {file+1} of {len(files)} - {files[file]}")
-
+        
         image = imread(inputdir + files[file])
-        logger.info(f" Raw data has shape {image.shape}")
+        logger.info(f" Raw data has shape: {image.shape}")
         
         image = check_image_shape(image, logger)
         
         neuron = image[:,settings.neuron_channel-1,:,:]
         
+
+        
+        # rescale if required by model        
+        if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
+            settings.original_shape[file] = neuron.shape
+            #new_shape = (int(neuron.shape[0] * settings.scaling_factors[0]), neuron.shape[1] * settings.scaling_factors[1]), neuron.shape[2] * settings.scaling_factors[2]))
+            new_shape = tuple(int(dim * factor) for dim, factor in zip(neuron.shape, settings.scaling_factors))
+            neuron = resize(neuron, new_shape, mode='constant', preserve_range=True, anti_aliasing=True)
+            logger.info(f" Data rescaled for labeling has shape: {neuron.shape}")
+
+
+        if neuron.shape[0] < 5:
+            #settings.shape_error = True
+            #logger.info(f"  !! Insufficient Z slices - please ensure 5 or more slices before processing.")
+            #logger.info(f"  File has been moved to \\Not_processed and excluded from processing.")
+            #if not os.path.isdir(inputdir+"Not_processed/"):
+            #    os.makedirs(inputdir+"Not_processed/")
+            #os.rename(inputdir+files[file], inputdir+"Not_processed/"+files[file])
+            
+            
+            #Padding and flag this file as padded for unpadding later
+            # Pad the array
+            settings.padding_req[file] = 1
+            neuron = np.pad(neuron, pad_width=((2, 2), (0, 0), (0, 0)), mode='constant', constant_values=0) 
+            logger.info(f" Too few Z-slices, padding to allow analysis.")
+                
         if settings.HistMatch == True:
             # If reference_image is None, it's the first image.
             if reference_image is None:
@@ -192,7 +239,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
                # Match histogram of current image to the reference image
                neuron = exposure.match_histograms(neuron, reference_image)    
             
-        
+        logger.info(f" ")
         #save neuron as a tif file in nnUnet_input - if file doesn't end with 0000 add that at the end
         name, ext = os.path.splitext(files[file])
 
@@ -204,7 +251,10 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
         filepath = locations.nnUnet_input+new_filename
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            skimage.io.imsave(filepath, neuron.astype(np.uint16), plugin='tifffile', photometric='minisblack')
+            tifffile.imwrite(filepath, neuron.astype(np.uint16), imagej=True, photometric='minisblack',
+                    metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
+                    resolution=(settings.input_resXY, settings.input_resXY))
+
             
     #Run nnUnet over prepared files
     #initialize_nnUnet(settings)
@@ -220,18 +270,18 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     
     logger.info("\nPerforming U-Net segmentation of neurons...")
     
-    
+    ##uncomment if issues with nnUnet
     #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
     
-    stdout = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, 
+    stdout, cmd = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, 
                                 locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings)
     
+    #logger.info(cmd)
     
-    
-    
+    ##uncomment if issues with nnUnet
     #result = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, locations,settings)
     
-    
+    '''
     # Add environment to the system path
     #os.environ["PATH"] = settings.nnUnet_env_path + os.pathsep + os.environ["PATH"]
 
@@ -245,8 +295,10 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     #result = subprocess.run(command, capture_output=True, text=True)
 
     #logger.info(result.stdout)  # This is the standard output of the command.
-    #logger.info(result.stderr)  # This is the error output of the command.  
+    #logger.info(result.stderr)  # This is the error output of the command. 
+    '''
     logger.info(stdout)
+    
     #delete nnunet input folder and files
     
     #if os.path.exists(locations.nnUnet_input):
@@ -275,8 +327,8 @@ def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id,
     activate_env = fr"{conda_dir}\Scripts\activate.bat && set PATH={conda_dir}\envs\{nnUnet_env}\Scripts;%PATH%"
 
     # Define the command to be run
-    cmd = "nnUNetv2_predict -i {} -o {} -d {} -c {} --save_probabilities -f all".format(input_dir, output_dir, dataset_id, nnunet_type)
-
+    cmd = "nnUNetv2_predict -i \"{}\" -o \"{}\" -d {} -c {} --save_probabilities -f all".format(input_dir, output_dir, dataset_id, nnunet_type)
+    
        
     # Combine the activate environment command with the actual command
     final_cmd = f'{activate_env} && {cmd}'
@@ -284,7 +336,7 @@ def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id,
     # Run the command
     process = subprocess.Popen(final_cmd, shell=True)
     stdout, stderr = process.communicate()
-    return stdout
+    return stdout, cmd
     
 def run_nnunet_predict_bat(path, env, input_dir, output_dir, dataset_id, nnunet_type,locations, settings):
     # Define the batch file content
@@ -349,12 +401,34 @@ def analyze_spines(settings, locations, log, logger):
     spine_summary = pd.DataFrame()
     
     for file in range(len(files)):
-        logger.info(f' Analyzing image {file+1} of {len(files)} \n  Raw Image:{files[file]} \n  Label Image:{label_files[file]}')
+        logger.info(f' Analyzing image {file+1} of {len(files)} \n Raw Image: {files[file]} \n Label Image: {label_files[file]}')
         
         image = imread(locations.input_dir + files[file])
         labels = imread(locations.labels + label_files[file])
         
-        logger.info(f"  Raw data has shape {image.shape}")
+        logger.info(f"raw shape: {image.shape}")
+        logger.info(f"labels shape: {labels.shape}")
+        
+        #Unpad if padded
+        if settings.padding_req[file] == 1:
+            labels = labels[2:-2, :, :]
+
+            #tifffile.imwrite(locations.labels + label_files[file], labels.astype(np.uint8), imagej=True, photometric='minisblack',
+            #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
+             #       resolution=(settings.input_resXY, settings.input_resXY))
+        
+        
+        # rescale labels back up if required      
+        if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
+            logger.info(f"orignal settings shape: {settings.original_shape[file]}")
+            labels = resize(labels, settings.original_shape[file], order=0, mode='constant', preserve_range=True, anti_aliasing=None)
+            logger.info(f"labels resized: {labels.shape}")
+
+            tifffile.imwrite(locations.labels + label_files[file], labels.astype(np.uint8), imagej=True, photometric='minisblack',
+                    metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
+                    resolution=(settings.input_resXY, settings.input_resXY))
+            
+
         
         image = check_image_shape(image, logger) 
         
@@ -413,7 +487,9 @@ def analyze_spines(settings, locations, log, logger):
         spine_MIPs, spine_slices, filtered_spine_MIPs, filtered_spine_slices= create_spine_arrays_in_blocks(image, spines_filtered, spine_table, settings.spine_roi_volume_size, settings, locations, files[file],  logger, settings.GPU_block_size)
     
     
-        logger.info(f"\nImage processing complete for file {files[file]}\n")
+        logger.info(f" Image processing complete for file {files[file]}\n")
+    if settings.shape_error == True:
+        logger.info(f"!!! One or more images moved to \\Not_Processed due to having\nless than 5 Z slices. Please modify these files before reprocessing.\n")
     spine_summary.to_csv(locations.tables + 'Detected_spines_summary.csv',index=False) 
     #logger.info("Spine analysis complete.\n")
     
@@ -744,7 +820,7 @@ def create_spine_arrays_in_blocks(image, labels_filtered, table, volume_size, se
     x_blocks = math.ceil(image.shape[2] / block_size_x)
     total_blocks = z_blocks * y_blocks * x_blocks
 
-    logger.info(f'Total number of blocks used for GPU spine array calculations: {total_blocks} ')
+    logger.info(f' Total blocks used for GPU spine array calculations: {total_blocks} ')
 
     for i in range(z_blocks):
         for j in range(y_blocks):
