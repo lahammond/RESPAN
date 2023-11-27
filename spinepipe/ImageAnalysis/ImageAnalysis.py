@@ -5,9 +5,9 @@ Image Analysis tools and functions for spine analysis
 
 
 """
-__title__     = 'spinpipe'
-__version__   = '0.9.2'
-__date__      = "25 July, 2023"
+__title__     = 'SpinePipe'
+__version__   = '0.9.4'
+__date__      = "19 November, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -25,7 +25,7 @@ import math
 #import time
 import warnings
 import re
-#import shutil
+import shutil
 
 #import spinepipe.Main.Main as main
 #import spinepipe.Main.Timer as timer
@@ -161,7 +161,7 @@ def check_image_shape(image,logger):
             
 
 def nnunet_create_labels(inputdir, settings, locations, logger):
-    logger.info(f"\nCreating dendrite and spine masks...\n")
+    logger.info(f"\nDetecting spines and dendrites...\n")
     settings.shape_error = False
     settings.rescale_req = False
     
@@ -233,7 +233,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
         if settings.HistMatch == True:
             # If reference_image is None, it's the first image.
             if reference_image is None:
-                neuron = contrast_stretch(neuron, pmin=0, pmax=100)
+                #neuron = contrast_stretch(neuron, pmin=0, pmax=100)
                 reference_image = neuron
             else:
                # Match histogram of current image to the reference image
@@ -268,7 +268,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     dataset_id = matches[0] if matches else None
 
     
-    logger.info("\nPerforming U-Net segmentation of neurons...")
+    logger.info("\nPerforming U-Net segmentation on GPU...")
     
     ##uncomment if issues with nnUnet
     #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
@@ -300,9 +300,10 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     logger.info(stdout)
     
     #delete nnunet input folder and files
+    if settings.save_intermediate_data == False and settings.Track == False:
+        if os.path.exists(locations.nnUnet_input):
+            shutil.rmtree(locations.nnUnet_input)
     
-    #if os.path.exists(locations.nnUnet_input):
-        #shutil.rmtree(locations.nnUnet_input)
     #Clean up label folder
 
     if os.path.exists(locations.labels):
@@ -315,6 +316,36 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
                 # remove the file
                 if os.path.isfile(file_path):
                     os.remove(file_path)
+    
+    
+    #if tracking over time then we want unpad and match how the labels will appear
+    if settings.Track == True:
+        
+        files = [file_i
+                 for file_i in os.listdir(locations.nnUnet_input)
+                 if file_i.endswith('.tif')]
+        files = sorted(files)
+        
+        for file in range(len(files)):
+            logger.info(f' Unpadding and rescaling neuron channel for registration and time tracking...')
+            
+            image = imread(locations.nnUnet_input + files[file])
+      
+            #Unpad if padded
+            if settings.padding_req[file] == 1:
+                image = image[2:-2, :, :]
+            
+            
+            # rescale labels back up if required      
+            if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
+                #logger.info(f"orignal settings shape: {settings.original_shape[file]}")
+                image = resize(image, settings.original_shape[file], order=0, mode='constant', preserve_range=True, anti_aliasing=None)
+                #logger.info(f"image resized: {labels.shape}")
+    
+                tifffile.imwrite(locations.nnUnet_input + files[file], image.astype(np.uint8), imagej=True, photometric='minisblack',
+                        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
+                        resolution=(settings.input_resXY, settings.input_resXY))
+                
     
     logger.info("Segmentation complete.\n")
     return stdout
@@ -495,6 +526,165 @@ def analyze_spines(settings, locations, log, logger):
     
 
 
+def analyze_spines_4D(settings, locations, log, logger):
+    logger.info("Analyzing spines across time...")
+    #spines = 1
+    #dendrites = 2
+    #soma = 3
+    
+    datasetname = os.path.basename(os.path.normpath(locations.input_dir))
+    
+    image = imread(locations.input_dir+"/Registered/Registered_images_4D.tif")
+    
+    labels = imread(locations.input_dir+"/Registered/Registered_labels_4D.tif")
+    
+    if image.shape != labels.shape:
+        logger.info(log)
+        raise RuntimeError("Image and labels are not the same shape.")
+    
+    
+    #! Fix this for multichannel raw data
+    neuron = image
+    
+    
+    spines = (labels == 1)
+    dendrites = (labels == 2)
+    
+    spine_labels = spine_detection_4d(spines, 10 ** 3, logger) #value used to remove small holes
+    
+    
+    #create lists for each 3D volume
+    dendrite_distance_list = []
+    skeleton_list = []
+        
+    spine_summary = pd.DataFrame()
+    
+    for t in range(labels.shape[0]):
+        labels_3d = labels[t, :, :, :]
+    
+    
+        #neuron = image[:,settings.neuron_channel-1,:,:]
+
+        #soma = (image == 3).astype(np.uint8)
+        
+        #Create Distance Map
+        
+        dendrites_3d = dendrites[t,:,:,:]
+    
+        dendrite_distance = ndimage.distance_transform_edt(np.invert(dendrites_3d)) #invert neuron mask to get outside distance  
+        dendrite_distance_list.append(dendrite_distance)
+        
+        dendrites_3d = dendrites_3d.astype(np.uint8)
+        skeleton = morphology.skeletonize_3d(dendrites_3d)
+        skeleton_list.append(skeleton)
+        #if settings.save_val_data == True:
+        #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
+        
+        #Create Neuron MIP for validation - include distance map too
+        #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
+        #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
+    
+        #Detection
+        #logger.info(" Detecting spines...")
+        
+    dendrite_distance = np.stack(dendrite_distance_list, axis=0)
+    skeleton = np.stack(skeleton_list, axis=0)
+    
+    spines_filtered_list = []
+    all_spines_table = pd.DataFrame()
+    all_summary_table = pd.DataFrame()
+    
+    #Measurements
+    
+    
+    for t in range(labels.shape[0]):
+        
+        spine_table, summary, spines_filtered = spine_measurements(image[t,:,:,:], spine_labels[t,:,:,:], settings.neuron_channel, dendrite_distance[t,:,:,:], settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, datasetname, logger)
+                                                              #soma_mask, soma_distance, )
+        if t == 0:
+            previous_spines = set(np.unique(spines_filtered))
+            new = 0
+            pruned = 0
+        
+        else:
+            current_spines = set(np.unique(spines_filtered))
+            new = len(current_spines - previous_spines)
+            pruned = len(previous_spines - current_spines)
+        
+        #add timepoint columns
+        spine_table['timepoint'] = t
+        summary['timepoint'] = t
+        summary['new_spines'] = new
+        summary['pruned_spines'] = pruned
+        
+        summary.insert(1, 'res_XY', settings.input_resXY)  
+        summary.insert(2, 'res_Z', settings.input_resZ)
+        dendrite_length = np.sum(skeleton == 1)
+        summary.insert(3, 'dendrite_length', dendrite_length)
+        dendrite_length_um = dendrite_length*settings.input_resXY
+        summary.insert(4, 'dendrite_length_um', dendrite_length_um)
+        dendrite_volume = np.sum(dendrites ==1)
+        summary.insert(5, 'dendrite_vol', dendrite_volume)
+        dendrite_volume_um3 = dendrite_volume*settings.input_resXY*settings.input_resXY*settings.input_resZ
+        summary.insert(6, 'dendrite_vol_um3', dendrite_volume_um3)
+        summary.insert(9, 'spines_per_um_length', summary['total_spines'][0]/dendrite_length_um)
+        summary.insert(10, 'spines_per_um3_vol', summary['total_spines'][0]/dendrite_volume_um3)
+        
+        #append tables
+        all_spines_table = pd.concat([all_spines_table, spine_table], ignore_index=True)
+        all_summary_table = pd.concat([all_summary_table, summary], ignore_index=True)
+        
+        #append images
+        spines_filtered_list.append(spines_filtered)
+        
+    
+    spines_filtered_all = np.stack(spines_filtered_list, axis=0)
+    
+    col = all_summary_table.pop('new_spines')  
+    all_summary_table.insert(9, 'new_spines', col) 
+    col = all_summary_table.pop('pruned_spines')
+    all_summary_table.insert(10, 'pruned_spines', col) 
+    
+    all_summary_table.rename(columns={'filename': 'dataset'}, inplace=True)
+    all_spines_table.rename(columns={'filename': 'dataset'}, inplace=True)
+    
+    
+    # update summary with additional metrics
+    
+                                                      
+    #append to summary
+    # Append to the overall summary DataFrame
+    #spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
+     
+    #Create Pivot Tables for volume and coordinates
+    
+    vol_over_t = all_spines_table.pivot(index='label', columns='timepoint', values='spine_vol_um3')
+    z_over_t = all_spines_table.pivot(index='label', columns='timepoint', values='z')
+    y_over_t = all_spines_table.pivot(index='label', columns='timepoint', values='y')
+    x_over_t = all_spines_table.pivot(index='label', columns='timepoint', values='x')
+    
+    #save required tables
+    vol_over_t.to_csv(locations.tables + 'Volume_4D.csv',index=False) 
+    all_summary_table.to_csv(locations.tables + 'Detected_spines_4D_summary.csv',index=False) 
+    all_spines_table.to_csv(locations.tables + 'Detected_spines_4D.csv',index=False) 
+    
+    
+    # Create MIP
+    neuron_MIP = create_mip_and_save_multichannel_tiff_4d([neuron, spines, spines_filtered_all, dendrites, skeleton, dendrite_distance], locations.input_dir+"/Registered/Registered_MIPs_4D.tif", 'float', settings)
+    
+    #Extract MIPs for each spine
+    spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.spine_roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
+
+    #Cleanup
+    if os.path.exists(locations.nnUnet_input): shutil.rmtree(locations.nnUnet_input)
+    if os.path.exists(locations.MIPs): shutil.rmtree(locations.MIPs)
+    if os.path.exists(locations.validation_dir+"/Registered_segmentation_labels/"): shutil.rmtree(locations.validation_dir+"/Registered_segmentation_labels/")
+    
+    
+    #logger.info("Spine analysis complete.\n")
+    
+
+
  
 def create_mip_and_save_multichannel_tiff(images_3d, filename, bitdepth, settings):
     """
@@ -523,6 +713,38 @@ def create_mip_and_save_multichannel_tiff(images_3d, filename, bitdepth, setting
     
     tifffile.imwrite(filename, multichannel_image, imagej=True, photometric='minisblack',
             metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'CYX'})
+
+    # Return the merged 2D multi-channel image as a numpy array
+    return multichannel_image
+
+def create_mip_and_save_multichannel_tiff_4d(images_3d, filename, bitdepth, settings):
+    """
+    Create MIPs from a list of 3D images, merge them into a multi-channel 2D image,
+    save as a 16-bit TIFF file, and return the merged 2D multi-channel image.
+
+    Args:
+        images_3d (list of numpy.ndarray): List of 3D numpy arrays representing input images.
+        filename (str): Filename for the output TIFF file.
+
+    Returns:
+        numpy.ndarray: Merged 2D multi-channel image as a numpy array.
+    """
+    # Create MIPs from the 3D images
+    mips = [np.amax(img, axis=1) for img in images_3d]
+    
+    # Convert the MIPs to a single multichannel image
+    multichannel_image = np.stack(mips, axis=0)
+    multichannel_image = np.swapaxes(multichannel_image, 0, 1)
+    
+    # Convert the multichannel image to 16-bit
+    multichannel_image = multichannel_image.astype(np.uint16)
+    #multichannel_image = rescale_all_channels_to_full_range(multichannel_image)
+    
+    # Save the multichannel image as a 16-bit TIFF file
+    #tifffile.imwrite(filename, multichannel_image, photometric='minisblack')
+    
+    tifffile.imwrite(filename, multichannel_image, imagej=True, photometric='minisblack',
+            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'TCYX'})
 
     # Return the merged 2D multi-channel image as a numpy array
     return multichannel_image
@@ -559,7 +781,7 @@ def spine_detection(spines, holes, logger):
         spines_clean = morphology.remove_small_holes(spines, holes)
     
     spines_clean = label(spines_clean)
-    #immune_labels_full = segmentation.watershed(immune_all_clean, immune_labels, mask=immune_all_clean)
+    #_full = segmentation.watershed(immune_all_clean, immune_labels, mask=immune_all_clean)
     
     #Remove objects touching border
     padded = np.pad(
@@ -572,6 +794,30 @@ def spine_detection(spines, holes, logger):
 
     return spines_clean
 
+def spine_detection_4d(spines, holes, logger):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        spines_clean = morphology.remove_small_holes(spines, holes)
+    
+    spines_clean = label(spines_clean)
+    #labels_full = segmentation.watershed(immune_all_clean, immune_labels, mask=immune_all_clean)
+    
+    spines_clean_list = []
+    #Remove objects touching border
+    for t in range(spines_clean.shape[0]):
+        spines_clean_3d = spines_clean[t, :, :, :]
+        padded = np.pad(
+          spines_clean_3d,
+          ((1, 1), (0, 0), (0, 0)),
+          mode='constant',
+          constant_values=0,
+          )
+        spines_clean_3d = segmentation.clear_border(padded)[1:-1]
+        spines_clean_list.append(spines_clean_3d)
+        
+    spines_clean_4d = np.stack(spines_clean_list, axis=0)
+
+    return spines_clean_4d
 
 def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
     """ measures intensity of each channel, as well as distance to dendrite
@@ -583,6 +829,9 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
         pandas table and labeled spine image
     """
 
+
+    if len(image.shape) == 3:
+        image = np.expand_dims(image, axis=1)
 
     #Measure channel 1:
     logger.info(" Measuring channel 1...")
@@ -600,6 +849,8 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     main_table.rename(columns={'centroid-0':'z'}, inplace=True)
     main_table.rename(columns={'centroid-1':'y'}, inplace=True)
     main_table.rename(columns={'centroid-2':'x'}, inplace=True)
+    
+    
     
     # measure remaining channels
     for ch in range(image.shape[1]-1):
@@ -690,6 +941,7 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     
     summary_stats['avg_C1_mean_int'] = summary_stats.pop('C1_mean_int')  
     summary_stats['avg_C1_max_int'] = summary_stats.pop('C1_max_int')  
+
     for ch in range(image.shape[1]-1):
         logger.info(f" Measuring channel {(ch+2)}...")
         summary_stats['avg_C'+str(ch+2)+'_mean_int'] = summary_stats.pop('C'+str(ch+2)+'_mean_int')  # Rename 'area' to 'Volume'
@@ -708,6 +960,8 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     filtered_table.to_csv(locations.tables + 'Detected_spines_'+filename+'.csv',index=False) 
   
     return filtered_table, summary_df, labels
+
+
 
 def create_filtered_labels_image(labels, filtered_table):
     """
@@ -895,6 +1149,151 @@ def create_spine_arrays_in_blocks(image, labels_filtered, table, volume_size, se
     pd.options.mode.chained_assignment = original_chained_assignment
     return mip_array, slice_z_array, mip_label_filtered_array, slice_before_mip_array
 
+def create_spine_arrays_in_blocks_4d(image, labels_filtered, table, volume_size, settings, locations, file, logger, block_size=(50, 300, 300)):
+    #suppress warning about subtracting from table without copying
+    original_chained_assignment = pd.options.mode.chained_assignment
+    pd.options.mode.chained_assignment = None
+    
+    smallest_axis = np.argmin(image.shape)
+    image = np.moveaxis(image, smallest_axis, -1)
+    
+    mip_list = []
+    slice_z_list = []
+    mip_label_filtered_list = []
+    slice_before_mip_list = []
+
+    block_size_z, block_size_y, block_size_x = block_size
+
+    z_blocks = math.ceil(image.shape[0] / block_size_z)
+    y_blocks = math.ceil(image.shape[1] / block_size_y)
+    x_blocks = math.ceil(image.shape[2] / block_size_x)
+    total_blocks = z_blocks * y_blocks * x_blocks
+
+    logger.info(f' Total blocks used for GPU spine array calculations: {total_blocks} ')
+
+    for i in range(z_blocks):
+        for j in range(y_blocks):
+            for k in range(x_blocks):
+                z_start = i * block_size_z
+                z_end = min((i + 1) * block_size_z, image.shape[0])
+                y_start = j * block_size_y
+                y_end = min((j + 1) * block_size_y, image.shape[1])
+                x_start = k * block_size_x
+                x_end = min((k + 1) * block_size_x, image.shape[2])
+
+                padding_z = int(max(0, (volume_size // settings.input_resZ) // 2))
+                padding_y = int(max(0, (volume_size // settings.input_resXY) // 2))
+                padding_x = int(max(0, (volume_size // settings.input_resXY) // 2))
+
+                padded_z_start = int(max(0, z_start - padding_z))
+                padded_z_end = int(min(image.shape[0], z_end + padding_z))
+                padded_y_start = int(max(0, y_start - padding_y))
+                padded_y_end = int(min(image.shape[1], y_end + padding_y))
+                padded_x_start = int(max(0, x_start - padding_x))
+                padded_x_end = int(min(image.shape[2], x_end + padding_x))
+                
+                #print(padded_z_start,padded_z_end, padded_y_start, padded_y_end, padded_x_start,padded_x_end)
+
+                block_image = image[padded_z_start:padded_z_end, padded_y_start:padded_y_end, padded_x_start:padded_x_end]
+                block_labels_filtered = labels_filtered[padded_z_start:padded_z_end, padded_y_start:padded_y_end, padded_x_start:padded_x_end]
+                #print(table['z'])
+                block_table = table[(table['z'] >= z_start) & (table['z'] < z_end) & (table['y'] >= y_start) & (table['y'] < y_end) & (table['x'] >= x_start) & (table['x'] < x_end)]
+                #print(block_table)
+                if len(block_table) > 0:
+                    #block_table['z'] = block_table['z'] - padded_z_start
+                    #block_table['y'] = block_table['y'] - padded_y_start
+                    #block_table['x'] = block_table['x'] - padded_x_start
+                    block_table.loc[:, 'z'] = block_table['z'] - padded_z_start
+                    block_table.loc[:, 'y'] = block_table['y'] - padded_y_start
+                    block_table.loc[:, 'x'] = block_table['x'] - padded_x_start
+                    
+                    block_mip, block_slice_z, block_mip_label_filtered, block_slice_before_mip = create_filtered_and_unfiltered_spine_arrays_cupy(
+                        block_image, block_labels_filtered, block_table, volume_size, settings, locations, file
+                    )
+                    mip_list.extend(block_mip)
+                    slice_z_list.extend(block_slice_z)
+                    mip_label_filtered_list.extend(block_mip_label_filtered)
+                    slice_before_mip_list.extend(block_slice_before_mip)
+                    gc.collect()
+                    
+        
+        progress_percentage = ((i + 1) * y_blocks * x_blocks) / total_blocks * 100
+        #print(f'Progress: {progress_percentage:.2f}%   ', end='', flush=True)
+
+    #print(mip_list)
+    # Convert lists to arrays and concatenate
+    mip_array = np.stack(mip_list, axis = 0)
+    slice_z_array = np.stack(slice_z_list, axis=0)
+    mip_label_filtered_array = np.stack(mip_label_filtered_list, axis=0)
+    slice_before_mip_array = np.stack(slice_before_mip_list, axis=0)
+    
+    tifffile.imwrite(locations.arrays+"/Spines_MIPs_"+file, mip_array.astype(np.uint16), imagej=True, photometric='minisblack',
+            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX', 'mode': 'composite'},
+            resolution=(1/settings.input_resXY, 1/settings.input_resXY))
+    tifffile.imwrite(locations.arrays + "/Spines_Slices_" + file, slice_z_array.astype(np.uint16), imagej=True, photometric='minisblack',
+                     metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX','mode': 'composite'},
+                     resolution=(1/settings.input_resXY, 1/settings.input_resXY))
+    tifffile.imwrite(locations.arrays+"/Masked_Spines_MIPs_"+file, mip_label_filtered_array.astype(np.uint16), imagej=True, photometric='minisblack',
+            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX', 'mode': 'composite'},
+            resolution=(1/settings.input_resXY, 1/settings.input_resXY))
+    tifffile.imwrite(locations.arrays + "/Masked_Spines_Slices_" + file, slice_before_mip_array.astype(np.uint16), imagej=True, photometric='minisblack',
+                     metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX','mode': 'composite'},
+                     resolution=(1/settings.input_resXY, 1/settings.input_resXY))
+
+    #reenable pandas warning:
+    pd.options.mode.chained_assignment = original_chained_assignment
+    return mip_array, slice_z_array, mip_label_filtered_array, slice_before_mip_array
+
+def create_MIP_spine_arrays_in_blocks_4d(image, y_locs, x_locs, volume_size, settings, locations, file, logger, block_size=(50, 300, 300)):
+    #spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.spine_roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
+
+    #image will be TCYX
+    
+    #we only want raw and object ID (0 and 2)
+    
+    image = image[:, [0, 2], :, :]
+    
+    volume_size = int(volume_size // settings.input_resXY)
+    # Pad the image
+    pad_width = int(volume_size // 2)
+    padded_image = np.pad(image, ((0, 0), (0, 0), (pad_width, pad_width), (pad_width, pad_width)), mode='constant')
+
+    
+    stacked_4D = []
+    for (index1, yrow), (index2, xrow) in zip(y_locs.iterrows(), x_locs.iterrows()):
+        regions = []
+        for t in range(padded_image.shape[0]):       
+            if np.isnan(yrow[t]):
+                region = np.zeros((padded_image.shape[1], volume_size, volume_size))
+            else:
+                y_coord = int(yrow[t])
+                x_coord = int(xrow[t])
+                #mask to object specifically            
+                region = padded_image[t, :, y_coord:y_coord+volume_size, x_coord:x_coord+volume_size]
+
+            regions.append(region)
+            
+    
+        # Stack regions horizontally
+       
+        stacked_regions = np.concatenate(regions, axis=2)
+        binary_mask = (stacked_regions[ 1, :, :] == index1)
+        binary_mask = binary_mask.astype(int)*100
+        stacked_regions[1, :, :] = binary_mask
+        stacked_regions = np.expand_dims(stacked_regions, axis=0)
+        
+        stacked_4D.append(stacked_regions)
+    
+    # Stack each ID along the Z-axis
+    final_4d = np.concatenate(stacked_4D, axis=0)
+    
+    tifffile.imwrite(locations.input_dir+"/Registered/Isolated_spines_4D.tif", final_4d.astype(np.uint16), imagej=True, photometric='minisblack',
+            metadata={'unit': 'um','axes': 'TCYX', 'mode': 'composite'},
+            resolution=(1/settings.input_resXY, 1/settings.input_resXY))
+
+    return final_4d, final_4d
+
+   
 def contrast_stretch(image, pmin=2, pmax=98):
     p2, p98 = np.percentile(image, (pmin, pmax))
     return exposure.rescale_intensity(image, in_range=(p2, p98))

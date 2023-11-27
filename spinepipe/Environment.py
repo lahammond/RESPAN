@@ -58,6 +58,7 @@ import spinepipe.Main.Timer as timer
 #image processing
 import spinepipe.ImageAnalysis.ImageAnalysis as imgan
 import spinepipe.ImageAnalysis.Validation as val
+import spinepipe.ImageAnalysis.SpineTracking as strk
 
 
 #analysis
@@ -71,4 +72,4 @@ __all__ = ['sys', 'os', 'tifffile', 'time', 'np',
            'plt', 'figure', 'exposure', 
            'segmentation', 'imread', 'imsave', 'imshow',  'util', 'img_as_ubyte',
            'ndi', 'clear_output',
-           'display', 'main', 'timer', 'imgan', 'val'];
+           'display', 'main', 'timer', 'imgan', 'val', 'strk'];

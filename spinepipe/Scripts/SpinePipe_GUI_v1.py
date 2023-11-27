@@ -4,15 +4,15 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.3'
-__date__      = "6 November, 2023"
+__version__   = '0.9.4'
+__date__      = "19 November, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'
 
 import sys
-#import os
+import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
                              QPushButton, QCheckBox, QLabel, QLineEdit, 
                              QMessageBox, QTextEdit, QWidget, QFileDialog, 
@@ -54,6 +54,11 @@ class Logger:
 
     def get_logger(self):
         return self.logger
+    
+    def clear_log(self, log_path):
+        # Open the log file in write mode to clear it
+        with open(log_path, 'w'):
+            pass
 
     def info(self, message):
         self.logger.info(message)
@@ -96,58 +101,70 @@ class Worker(QThread):
         try:
             
             sys.path.append(self.spinepipe)
-            from spinepipe.Environment import main, imgan, timer
+            from spinepipe.Environment import main, imgan, timer, strk
             main.check_gpu()
-            #Load in experiment parameters and analysis settings   
-            settings, locations = main.initialize_spinepipe(self.directory)
+            
+            for subfolder in os.listdir(self.directory):
+                subfolder_path = os.path.join(self.directory, subfolder)
+                if os.path.isdir(subfolder_path): 
+                    subfolder_path = subfolder_path +"/"    
+                    #print(f"Processing subfolder: {subfolder_path}")
+                    #Load in experiment parameters and analysis settings   
+                    settings, locations = main.initialize_spinepipe(subfolder_path)
+                
+                    #import spinepipe.Environment
+                    
+                    log_path = subfolder_path +'SpinePipe_Log' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'
+                    
+                    self.logger.set_log_file(log_path)  # Note: we're not passing a log_display, because it's not thread-safe
+                    
+                    self.logger.clear_log(log_path)
+                
+                    self.logger.info("SpinePipe Version: "+__version__)
+                    self.logger.info("Release Date: "+__date__) 
+                    self.logger.info("Created by: "+__author__+"")
+                    self.logger.info("Zuckerman Institute, Columbia University\n")
+                      
+                   
+                                   
+                    #Modify specific parameters and settings:    
+                    settings.save_intermediate_data = False
+                    #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
+                    #settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
+                    settings.GPU_block_size = self.GPU_block
+                    settings.neuron_spine_size = self.spine_vol
+                    settings.neuron_spine_dist = self.spine_dist
+                    settings.HistMatch = self.HistMatch
+                    settings.Track = self.Track
         
-            #import spinepipe.Environment
-            
-            log_path = self.directory +'SpinePipe_Log' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'
-            self.logger.set_log_file(log_path)  # Note: we're not passing a log_display, because it's not thread-safe
-            
         
-            self.logger.info("SpinePipe Version: "+__version__)
-            self.logger.info("Release Date: "+__date__) 
-            self.logger.info("Created by: "+__author__+"")
-            self.logger.info("Zuckerman Institute, Columbia University\n")
-              
-           
-            #Load in experiment parameters and analysis settings   
-            settings, locations = main.initialize_spinepipe(self.directory)
+                    self.logger.info("Processing folder: "+subfolder_path)
+                    self.logger.info(f" Image resolution: {settings.input_resXY}um XY, {settings.input_resZ}um Z")
+                    self.logger.info(f" Model used: {settings.neuron_seg_model_path}")    
+                    self.logger.info(f" Model resolution: {settings.neuron_seg_model_res[0]}um XY, {settings.neuron_seg_model_res[2]}um Z")    
+                    self.logger.info(f" Spine volume set to: {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
+                    self.logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
+                    
+                    self.logger.info(f" {settings.neuron_seg_model_path}um Z")
+                    #Processing
             
-            #Modify specific parameters and settings:    
-            settings.save_intermediate_data = True
-            #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
-            #settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
-            settings.GPU_block_size = self.GPU_block
-            settings.neuron_spine_size = self.spine_vol
-            settings.neuron_spine_dist = self.spine_dist
-            settings.HistMatch = self.HistMatch
-            settings.Track = self.Track
-
-
-            self.logger.info("Processing folder: "+self.directory)
-            self.logger.info(f" Image resolution: {settings.input_resXY}um XY, {settings.input_resZ}um Z")
-            self.logger.info(f" Model used: {settings.neuron_seg_model_path}")    
-            self.logger.info(f" Model resolution: {settings.neuron_seg_model_res[0]}um XY, {settings.neuron_seg_model_res[2]}um Z")    
-            self.logger.info(f" Spine volume set to: {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
-            self.logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
             
-            self.logger.info(f" {settings.neuron_seg_model_path}um Z")
-            #Processing
+                    
+                    log = imgan.restore_and_segment(subfolder_path, settings, locations, self.logger)
             
-            log = imgan.restore_and_segment(self.directory, settings, locations, self.logger)
+                    imgan.analyze_spines(settings, locations, log, self.logger)
+                    
+                    if settings.Track == True:
+                        strk.track_spines(settings, locations, log, self.logger)
+                        imgan.analyze_spines_4D(settings, locations, log, self.logger)
             
-            imgan.analyze_spines(settings, locations, log, self.logger)
-            
-            self.logger.info("SpinePipe analysis complete.")
-            self.logger.info("SpinePipe Version: "+__version__)
-            self.logger.info("Release Date: "+__date__+"") 
-            self.logger.info("Created by: "+__author__+"") 
-            self.logger.info("Department of Neurology, The Ohio State University\n")
-            self.logger.info("Zuckerman Institute, Columbia University\n") 
-            self.logger.info("--------------------------------------------------------------------")
+                    self.logger.info("SpinePipe analysis complete.")
+                    self.logger.info("SpinePipe Version: "+__version__)
+                    self.logger.info("Release Date: "+__date__+"") 
+                    self.logger.info("Created by: "+__author__+"") 
+                    self.logger.info("Department of Neurology, The Ohio State University")
+                    self.logger.info("Zuckerman Institute, Columbia University\n") 
+                    self.logger.info("--------------------------------------------------------------------")
             
             self.task_done.emit("")
             
@@ -221,13 +238,13 @@ class MainWindow(QMainWindow):
         options_layout2 = QVBoxLayout()
         options_group2.setLayout(options_layout2)
         self.save_intermediate = QCheckBox("Save intermediate data")
-        self.save_intermediate.setChecked(True) 
+        self.save_intermediate.setChecked(False) 
         self.integer_label = QLabel("GPU block size (decrease block size if processing fails):")
         self.integer_input = QLineEdit("150,500,500")
         self.integer_label_2 = QLabel("Spine volume filter (min, max volume in voxels):")
         self.integer_input_2 = QLineEdit("3,1500")
         self.integer_label_3 = QLabel("Spine distance from dendrite filter (max distance in voxels):")
-        self.integer_input_3 = QLineEdit("650")
+        self.integer_input_3 = QLineEdit("500")
         self.HistMatch = QCheckBox("Histogram Matching (matches image histograms to first image in the series)")
         self.HistMatch.setChecked(False) 
         self.Track = QCheckBox("Spine Tracking (track spines over time, folder should contain sperate volumes for each timepoint)")
@@ -434,14 +451,14 @@ palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
 app.setPalette(palette)
 
 
-splash = Splash(" SpinePipe is loading...", 3000)
+splash = Splash("SpinePipe loading...", 3000)
 splash.show()
 
 # Ensures that the application is fully up and running before closing the splash screen
 app.processEvents()
 
 window = MainWindow()
-window.setWindowTitle(f'SpinePipe - Version: {__version__}')
+window.setWindowTitle(f' SpinePipe - Version: {__version__}')
 window.setGeometry(100, 100, 1200, 800)  
 window.show()
 sys.exit(app.exec_())

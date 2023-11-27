@@ -5,9 +5,9 @@ Image Analysis tools and functions for spine analysis
 
 
 """
-__title__     = 'spinpipe'
-__version__   = '0.9.2'
-__date__      = "25 Sept, 2023"
+__title__     = 'SpinePipe'
+__version__   = '0.9.4'
+__date__      = "19 November, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -21,6 +21,8 @@ import numpy as np
 
 import ants
 
+import warnings
+
 import nibabel as nib
 from tifffile import imread, imwrite
 
@@ -33,10 +35,6 @@ from skimage import exposure
 from skimage.measure import label
 from skimage.measure import regionprops
 from scipy.spatial import distance
-
-#inputdir = "D:/Project_Data/SpineAnalysis/Tracking_of_Spines/Segmentation_Mask/"
-
-inputdir = "D:/Project_Data/SpineAnalysis/Tracking_of_Spines/test_segment_man_clean/"
 
 
 """    
@@ -55,7 +53,72 @@ final_array = save_as_4d_tiff(registered_labels, inputdir+"/registered_labels/",
 
 """
 
-def save_as_4d_tiff(images, outputdir, filename):
+def track_spines(settings, locations, log, logger):
+    logger.info("Registering and tracking spines...")
+    
+    #enhance nnUnet for registration if necessary
+    enhance_for_reg(locations.nnUnet_input, locations.nnUnet_input+"/enhanced/", settings, logger)
+
+    #Convert to nifti for reg
+    tiff_to_nifti(locations.nnUnet_input+"/enhanced/", locations.nnUnet_input+"/enhanced_image_nii/", logger)
+    tiff_to_nifti(locations.nnUnet_input, locations.nnUnet_input+"/image_nii/", logger)
+    labels_to_nifti(locations.labels, locations.labels+"/labels_nii/", logger)
+
+    #registration - modify to include translation of all channels in raw data    
+    registered_images, registered_labels = serial_registration_of_images_and_labels(locations.nnUnet_input+"/enhanced_image_nii",locations.nnUnet_input+"/image_nii", locations.labels+"/labels_nii", logger)
+
+
+    save_registered_images_to_tif(registered_images, locations.nnUnet_input+"/registered", logger)
+    save_registered_images_to_tif(registered_labels, locations.input_dir+"/Validation_Data/Registered_segmentation_labels", logger)
+
+    final_array = save_as_4d_tiff(registered_images, locations.input_dir+"/Registered/", "Registered_images_4d.tif", logger)
+    final_array = save_as_4d_tiff(registered_labels, locations.input_dir+"/Registered/", "Registered_labels_4d.tif", logger)
+    
+   
+
+def enhance_for_reg(inputdir, outputdir, settings, logger):
+    #some code here for 
+    # file in files
+    logger.info("Enhancing for registration...")
+    
+    #Create output
+    if not os.path.exists(outputdir):
+       os.makedirs(outputdir)
+    
+    files = [file_i
+             for file_i in os.listdir(inputdir)
+             if file_i.endswith('.tif')]
+    files = sorted(files)
+    
+    for file in range(len(files)):
+        image = imread(inputdir + files[file])
+        image = contrast_stretch(image, pmin=2, pmax=97)
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            imwrite(outputdir + files[file], image.astype(np.uint16), imagej=True, photometric='minisblack',
+                    metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
+                    resolution=(settings.input_resXY, settings.input_resXY))
+
+    
+    """
+    if settings.HistMatch == True:
+        # If reference_image is None, it's the first image.
+        if reference_image is None:
+            neuron = contrast_stretch(neuron, pmin=0, pmax=100)
+            reference_image = neuron
+        else:
+           # Match histogram of current image to the reference image
+           neuron = exposure.match_histograms(neuron, reference_image) 
+           """
+
+def contrast_stretch(image, pmin=2, pmax=98):
+    p2, p98 = np.percentile(image, (pmin, pmax))
+    return exposure.rescale_intensity(image, in_range=(p2, p98))
+
+
+
+def save_as_4d_tiff(images, outputdir, filename, logger):
     """
     Save a 4D numpy array as a TIFF image.
     
@@ -63,18 +126,19 @@ def save_as_4d_tiff(images, outputdir, filename):
         array (np.array): 4D numpy array of image data.
         outputpath (str): Path where the 4D TIFF image will be saved.
     """
+    #logger.info("Saving registered 4D data...")
     #Create output
     if not os.path.exists(outputdir):
        os.makedirs(outputdir)
        
     # Convert each ANTs image to a numpy array and stack to form a 4D array
     stacked_array = np.stack([img.numpy() for img in images], axis=0)
-    print(stacked_array.shape)
+    #logger.info(stacked_array.shape)
     reordered_array = np.moveaxis(stacked_array, [0, 1, 2, 3], [0, 3, 2, 1])
     #add an axis for C at position 0
     final_array = reordered_array[:, :, np.newaxis,  :, :]
     
-    print(final_array.shape)
+    #logger.info(final_array.shape)
     
     #final_array = img_as_uint(final_array)
     
@@ -84,7 +148,7 @@ def save_as_4d_tiff(images, outputdir, filename):
     return(final_array)
 
 
-def serial_registration_from_folder_rigid(input_path):
+def serial_registration_from_folder_rigid(input_path, logger):
     """
     Serially register a list of images using rigid body registration with ANTsPy.
     
@@ -94,6 +158,7 @@ def serial_registration_from_folder_rigid(input_path):
     Returns:
         list of ANTsImage: List of registered images.
     """
+
     
     # Sort filenames to ensure the correct order
     images_list = sorted([os.path.join(input_path, filename) for filename in os.listdir(input_path) if filename.endswith('.nii')])
@@ -106,9 +171,9 @@ def serial_registration_from_folder_rigid(input_path):
     # The first image is considered the fixed image for the first registration
     fixed_image = ants.image_read(images_list[0])
     registered_images.append(fixed_image)
-
+    logger.info(f"Registering and transforming images and labels...")
     for i in range(1, len(images_list)):
-        print(f"Processing: {images_list[i]}")
+        #logger.info(f"Processing: {images_list[i]}")
         moving_image = ants.image_read(images_list[i])
         
         # Register moving image to fixed image using rigid transformation
@@ -162,10 +227,12 @@ def serial_registration_from_folder_rigid(input_path):
     # Stack along a new first axis to create 4D array
     registered_images = np.stack(registered_images, axis=0)
 
+    logger.info(f"Registration complete./n")
+    
     return registered_images
 
 
-def serial_registration_of_images_and_labels(img_input_path, labels_input_path):
+def serial_registration_of_images_and_labels(enhanced_input_path, img_input_path, labels_input_path, logger):
     """
     Serially register a list of images using rigid body registration with ANTsPy.
     
@@ -177,6 +244,8 @@ def serial_registration_of_images_and_labels(img_input_path, labels_input_path):
     """
     
     # Sort filenames to ensure the correct order
+    enhanced_list = sorted([os.path.join(enhanced_input_path, filename) for filename in os.listdir(enhanced_input_path) if filename.endswith('.nii')])
+    
     images_list = sorted([os.path.join(img_input_path, filename) for filename in os.listdir(img_input_path) if filename.endswith('.nii')])
 
     labels_list = sorted([os.path.join(labels_input_path, filename) for filename in os.listdir(labels_input_path) if filename.endswith('.nii')])
@@ -185,18 +254,27 @@ def serial_registration_of_images_and_labels(img_input_path, labels_input_path):
         raise ValueError("No images found in the provided folder.")
 
     
+    #registered_enhanced = []
     registered_images = []
     registered_labels = []
+
+    
     # The first image is considered the fixed image for the first registration
+    fixed_enhanced = ants.image_read(enhanced_list[0])
     fixed_image = ants.image_read(images_list[0])
     fixed_label = ants.image_read(labels_list[0])
-    
+       
+    #registered_enhanced.append(fixed_enhanced)
     registered_images.append(fixed_image)
     registered_labels.append(fixed_label)
+    
 
     for i in range(1, len(images_list)):
-        print(f"Processing: {images_list[i]}")
+        logger.info(f"Processing: {images_list[i]}")
+        moving_enhanced = ants.image_read(enhanced_list[i])
+        
         moving_image = ants.image_read(images_list[i])
+
         moving_label = ants.image_read(labels_list[i])
         
         # Register moving image to fixed image using rigid transformation
@@ -204,8 +282,8 @@ def serial_registration_of_images_and_labels(img_input_path, labels_input_path):
         #registration = ants.registration(fixed=fixed_image, moving=moving_image, type_of_transform='Rigid')
         
         registration = ants.registration(
-            fixed=fixed_image,
-            moving=moving_image,
+            fixed=fixed_enhanced,
+            moving=moving_enhanced,
             type_of_transform='DenseRigid', #Rigid
             initial_transform=None, 
             outprefix='', 
@@ -244,15 +322,16 @@ def serial_registration_of_images_and_labels(img_input_path, labels_input_path):
         
           
         
-        warped_label = ants.apply_transforms(fixed=fixed_image, moving=moving_label, transformlist=registration['fwdtransforms'], interpolator='nearestNeighbor')
+        warped_label = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_label, transformlist=registration['fwdtransforms'], interpolator='genericLabel') #'nearestNeighbor')
+        warped_image = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_image, transformlist=registration['fwdtransforms'], interpolator='linear')
+            
         
         # The registered image becomes the new fixed image for the next iteration
-        fixed_image = registration['warpedmovout']
+        fixed_enhanced = registration['warpedmovout']
         
-        registered_images.append(fixed_image)
+        registered_images.append(warped_image)
         registered_labels.append(warped_label)
-        
-        
+       
         
     # Stack along a new first axis to create 4D array
     registered_images = np.stack(registered_images, axis=0)
@@ -261,7 +340,7 @@ def serial_registration_of_images_and_labels(img_input_path, labels_input_path):
     return registered_images, registered_labels
 
 
-def tiff_to_nifti(input_path, output_path):
+def tiff_to_nifti(input_path, output_path, logger):
     """
     Convert a TIFF image to NIfTI format using tifffile and nibabel.
     
@@ -282,16 +361,7 @@ def tiff_to_nifti(input_path, output_path):
             image_path = os.path.join(input_path, filename)
             # Read the TIFF image using tifffile
             data = imread(image_path)
-            
-            # If reference_image is None, it's the first image.
-            if reference_image is None:
-                data = contrast_stretch(data, pmin=5, pmax=97)
-                reference_image = data
-                
-            else:
-               # Match histogram of current image to the reference image
-               data = exposure.match_histograms(data, reference_image)
-            
+                        
             #data = normalize_intensity(data)
             
             
@@ -306,7 +376,7 @@ def tiff_to_nifti(input_path, output_path):
             # Save the NIfTI image
             nib.save(new_image, os.path.join(output_path, os.path.splitext(filename)[0] + ".nii"))
              
-def labels_to_nifti(input_path, output_path):
+def labels_to_nifti(input_path, output_path, logger):
     """
     Convert a TIFF image to NIfTI format using tifffile and nibabel.
     
@@ -354,7 +424,7 @@ def labels_to_nifti(input_path, output_path):
 
 
 
-def save_registered_images_to_tif(registered_images, output):
+def save_registered_images_to_tif(registered_images, output, logger):
     """
     Save a list of registered ANTs images to .tif format.
     
