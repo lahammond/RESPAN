@@ -98,9 +98,12 @@ for data_dir in data_dirs:
                 settings.save_intermediate_data = True
                 settings.spine_roi_volume_size = 5 #4 in microns in x, y, z - approx 13px for 0.3 resolution data
                 settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
-                settings.neuron_spine_dist = 450
+                settings.neuron_spine_size = (0.03,15)
+                settings.neuron_spine_dist = 4
                 settings.HistMatch = True
                 settings.Track = True
+                settings.reg_method = "Elastic" #or "Elastic"
+                settings.erode_shape = (0.5,2,2)
                 
                 settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/spinepipe/Models/Dataset022_SpinesDendrites/"
                 settings.seg_model = ("nnUnet","")

@@ -26,6 +26,7 @@ import math
 import warnings
 import re
 import shutil
+from pathlib import Path
 
 #import spinepipe.Main.Main as main
 #import spinepipe.Main.Timer as timer
@@ -46,7 +47,7 @@ import cupy as cp
 #import cv2
 import tifffile
 #from skimage.io import imread #, util #imsave, imshow,
-from tifffile import imread as imread
+from tifffile import imread
 
 #from math import trunc
 
@@ -56,6 +57,8 @@ from skimage import measure, morphology, segmentation, exposure #util,  color, d
 from skimage.transform import resize
 from skimage.measure import label
 from scipy import ndimage
+
+
 
 import gc
 #import cupy as cp
@@ -161,7 +164,7 @@ def check_image_shape(image,logger):
             
 
 def nnunet_create_labels(inputdir, settings, locations, logger):
-    logger.info(f"\nDetecting spines and dendrites...\n")
+    logger.info(f"\nDetecting spines and dendrites...")
     settings.shape_error = False
     settings.rescale_req = False
     
@@ -187,7 +190,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     #Prepare Raw data for nnUnet
     
     # Initialize reference to None - if using histogram matching
-    logger.info(f" Histogram Matching is set to = {settings.HistMatch}\n")
+    logger.info(f" Histogram Matching is set to = {settings.HistMatch}")
     reference_image = None
     
     #create empty arrays to capture dims and padding info
@@ -195,10 +198,10 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     settings.padding_req = np.zeros(len(files))
     
     for file in range(len(files)):
-        logger.info(f" Preparing images {file+1} of {len(files)} - {files[file]}")
+        logger.info(f" Preparing image {file+1} of {len(files)} - {files[file]}")
         
         image = imread(inputdir + files[file])
-        logger.info(f" Raw data has shape: {image.shape}")
+        logger.info(f"  Raw data has shape: {image.shape}")
         
         image = check_image_shape(image, logger)
         
@@ -212,7 +215,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
             #new_shape = (int(neuron.shape[0] * settings.scaling_factors[0]), neuron.shape[1] * settings.scaling_factors[1]), neuron.shape[2] * settings.scaling_factors[2]))
             new_shape = tuple(int(dim * factor) for dim, factor in zip(neuron.shape, settings.scaling_factors))
             neuron = resize(neuron, new_shape, mode='constant', preserve_range=True, anti_aliasing=True)
-            logger.info(f" Data rescaled for labeling has shape: {neuron.shape}")
+            logger.info(f"  Data rescaled for labeling has shape: {neuron.shape}")
 
 
         if neuron.shape[0] < 5:
@@ -228,7 +231,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
             # Pad the array
             settings.padding_req[file] = 1
             neuron = np.pad(neuron, pad_width=((2, 2), (0, 0), (0, 0)), mode='constant', constant_values=0) 
-            logger.info(f" Too few Z-slices, padding to allow analysis.")
+            logger.info(f"  Too few Z-slices, padding to allow analysis.")
                 
         if settings.HistMatch == True:
             # If reference_image is None, it's the first image.
@@ -239,7 +242,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
                # Match histogram of current image to the reference image
                neuron = exposure.match_histograms(neuron, reference_image)    
             
-        logger.info(f" ")
+        #logger.info(f" ")
         #save neuron as a tif file in nnUnet_input - if file doesn't end with 0000 add that at the end
         name, ext = os.path.splitext(files[file])
 
@@ -268,7 +271,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     dataset_id = matches[0] if matches else None
 
     
-    logger.info("\nPerforming U-Net segmentation on GPU...")
+    logger.info("\nPerforming spine and dendrite detection on GPU...")
     
     ##uncomment if issues with nnUnet
     #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
@@ -297,7 +300,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     #logger.info(result.stdout)  # This is the standard output of the command.
     #logger.info(result.stderr)  # This is the error output of the command. 
     '''
-    logger.info(stdout)
+    #logger.info(stdout)
     
     #delete nnunet input folder and files
     if settings.save_intermediate_data == False and settings.Track == False:
@@ -327,7 +330,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
         files = sorted(files)
         
         for file in range(len(files)):
-            logger.info(f' Unpadding and rescaling neuron channel for registration and time tracking...')
+            if file == 0: logger.info(' Unpadding and rescaling neuron channel for registration and time tracking...')
             
             image = imread(locations.nnUnet_input + files[file])
       
@@ -347,7 +350,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
                         resolution=(settings.input_resXY, settings.input_resXY))
                 
     
-    logger.info("Segmentation complete.\n")
+    #logger.info("Segmentation complete.\n")
     return stdout
 
 def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id, nnunet_type, settings):
@@ -405,12 +408,13 @@ def run_command_in_conda_env(command, env, python):
 def initialize_nnUnet(settings):
     os.environ['nnUNet_raw'] = settings.nnUnet_raw
     os.environ['nnUNet_preprocessed'] = settings.nnUnet_preprocessed
-    os.environ['nnUNet_results'] = settings.nnUnet_results
+    nnUnet_results = settings.neuron_seg_model_path
+    os.environ['nnUNet_results'] = nnUnet_results
     
 
 
 def analyze_spines(settings, locations, log, logger):
-    logger.info("Analyzing spines...")
+    logger.info("\nAnalyzing spines...\n")
     #spines = 1
     #dendrites = 2
     #soma = 3
@@ -432,13 +436,12 @@ def analyze_spines(settings, locations, log, logger):
     spine_summary = pd.DataFrame()
     
     for file in range(len(files)):
-        logger.info(f' Analyzing image {file+1} of {len(files)} \n Raw Image: {files[file]} \n Label Image: {label_files[file]}')
+        logger.info(f' Analyzing image {file+1} of {len(files)} \n Raw Image: {files[file]} & Label Image: {label_files[file]}')
         
         image = imread(locations.input_dir + files[file])
         labels = imread(locations.labels + label_files[file])
         
-        logger.info(f"raw shape: {image.shape}")
-        logger.info(f"labels shape: {labels.shape}")
+        logger.info(f" Raw shape: {image.shape} & Labels shape: {labels.shape}")
         
         #Unpad if padded
         if settings.padding_req[file] == 1:
@@ -484,7 +487,7 @@ def analyze_spines(settings, locations, log, logger):
 
         #Detection
         logger.info(" Detecting spines...")
-        spine_labels = spine_detection(spines, 10 ** 3, logger) #value used to remove small holes
+        spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
     
     
         #Measurements
@@ -550,7 +553,7 @@ def analyze_spines_4D(settings, locations, log, logger):
     spines = (labels == 1)
     dendrites = (labels == 2)
     
-    spine_labels = spine_detection_4d(spines, 10 ** 3, logger) #value used to remove small holes
+    spine_labels = spine_detection_4d(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #value used to remove small holes
     
     
     #create lists for each 3D volume
@@ -560,6 +563,9 @@ def analyze_spines_4D(settings, locations, log, logger):
     spine_summary = pd.DataFrame()
     
     for t in range(labels.shape[0]):
+        
+        logger.info(f" Processing timepoint {t+1} of {labels.shape[0]}.")
+        
         labels_3d = labels[t, :, :, :]
     
     
@@ -598,7 +604,7 @@ def analyze_spines_4D(settings, locations, log, logger):
     
     
     for t in range(labels.shape[0]):
-        
+        logger.info(f" Measuring timepoint {t+1} of {labels.shape[0]}.")
         spine_table, summary, spines_filtered = spine_measurements(image[t,:,:,:], spine_labels[t,:,:,:], settings.neuron_channel, dendrite_distance[t,:,:,:], settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, datasetname, logger)
                                                               #soma_mask, soma_distance, )
         if t == 0:
@@ -775,49 +781,119 @@ def rescale_all_channels_to_full_range(array):
     return array
 
 # Detects immune cells for multiclass unet output
-def spine_detection(spines, holes, logger):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        spines_clean = morphology.remove_small_holes(spines, holes)
+def spine_detection(spines, erode, remove_borders, logger):
+    #with warnings.catch_warnings():
+    #    warnings.simplefilter("ignore")
+    #    spines_clean = morphology.remove_small_holes(spines, holes)
     
-    spines_clean = label(spines_clean)
-    #_full = segmentation.watershed(immune_all_clean, immune_labels, mask=immune_all_clean)
-    
-    #Remove objects touching border
-    padded = np.pad(
-      spines_clean,
-      ((1, 1), (0, 0), (0, 0)),
-      mode='constant',
-      constant_values=0,
-      )
-    spines_clean = segmentation.clear_border(padded)[1:-1]
+    if erode[0] > 0:
+        #Erode
+        #element = morphology.ball(erode)
+        ellipsoidal_element = create_ellipsoidal_element(erode[0], erode[1], erode[2])
 
-    return spines_clean
-
-def spine_detection_4d(spines, holes, logger):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        spines_clean = morphology.remove_small_holes(spines, holes)
+        spines_eroded = ndimage.binary_erosion(spines, ellipsoidal_element)
+        
+        # Distance Transform to mark centers
+        distance = ndimage.distance_transform_edt(spines_eroded)
+        seeds = ndimage.label(distance > 0.1 * distance.max())[0]
     
-    spines_clean = label(spines_clean)
-    #labels_full = segmentation.watershed(immune_all_clean, immune_labels, mask=immune_all_clean)
-    
-    spines_clean_list = []
+        #Watershed
+        labels = segmentation.watershed(-distance, seeds, mask=spines)
+        
+    else:
+        labels = measure.label(spines)
+        
     #Remove objects touching border
-    for t in range(spines_clean.shape[0]):
-        spines_clean_3d = spines_clean[t, :, :, :]
+    if remove_borders == True:
         padded = np.pad(
-          spines_clean_3d,
+          labels,
           ((1, 1), (0, 0), (0, 0)),
           mode='constant',
           constant_values=0,
           )
-        spines_clean_3d = segmentation.clear_border(padded)[1:-1]
-        spines_clean_list.append(spines_clean_3d)
+        labels = segmentation.clear_border(padded)[1:-1]
         
-    spines_clean_4d = np.stack(spines_clean_list, axis=0)
+    # add new axis for labels
+    #labels = labels[:, np.newaxis, :, :]
 
-    return spines_clean_4d
+    return labels
+
+def dendrite_detection(dendrite, logger):
+    #with warnings.catch_warnings():
+    #    warnings.simplefilter("ignore")
+    #    spines_clean = morphology.remove_small_holes(spines, holes)
+    
+    else:
+        labels = measure.label(spines)
+        
+    #Remove objects touching border
+    if remove_borders == True:
+        padded = np.pad(
+          labels,
+          ((1, 1), (0, 0), (0, 0)),
+          mode='constant',
+          constant_values=0,
+          )
+        labels = segmentation.clear_border(padded)[1:-1]
+        
+    # add new axis for labels
+    #labels = labels[:, np.newaxis, :, :]
+
+    return labels
+
+def spine_detection_4d(spines, erode, remove_borders, logger):
+    #with warnings.catch_warnings():
+    #    warnings.simplefilter("ignore")
+    #    spines_clean = morphology.remove_small_holes(spines, holes)
+    if erode[0] > 0:
+        
+        #Erode
+        #element = morphology.ball(erode)
+        ellipsoidal_element = create_ellipsoidal_element(erode[0], erode[1], erode[2])
+        ellipsoidal_element = ellipsoidal_element[np.newaxis, :, :, :]
+        
+        spines_eroded = ndimage.binary_erosion(spines, ellipsoidal_element)
+    
+        # Distance Transform to mark centers
+        distance = ndimage.distance_transform_edt(spines_eroded)
+        seeds = ndimage.label(distance > 0.1 * distance.max())[0]
+
+        #Watershed
+        labels = segmentation.watershed(-distance, seeds, mask=spines)
+        
+    else:
+        labels = measure.label(spines)
+       
+    
+    if remove_borders == True:
+        spines_list = []
+        #Remove objects touching border
+        for t in range(labels.shape[0]):
+            labels_3d = labels[t, :, :, :]
+            padded = np.pad(
+              labels_3d,
+              ((1, 1), (0, 0), (0, 0)),
+              mode='constant',
+              constant_values=0,
+              )
+            labels_3d = segmentation.clear_border(padded)[1:-1]
+            spines_list.append(labels_3d)
+            
+        labels = np.stack(spines_list, axis=0)
+
+    return labels
+
+def create_ellipsoidal_element(radius_z, radius_y, radius_x):
+    # Create a grid of points
+    z = np.arange(-radius_x, radius_x + 1)
+    y = np.arange(-radius_y, radius_y + 1)
+    x = np.arange(-radius_z, radius_z + 1)
+    z, y, x = np.meshgrid(z, y, x, indexing='ij')
+
+    # Create an ellipsoid
+    ellipsoid = (z**2 / radius_z**2) + (y**2 / radius_y**2) + (x**2 / radius_x**2) <= 1
+
+    return ellipsoid
 
 def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
     """ measures intensity of each channel, as well as distance to dendrite
@@ -834,7 +910,7 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
         image = np.expand_dims(image, axis=1)
 
     #Measure channel 1:
-    logger.info(" Measuring channel 1...")
+    logger.info("  Measuring channel 1...")
     main_table = pd.DataFrame(
         measure.regionprops_table(
             labels,
@@ -854,7 +930,7 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     
     # measure remaining channels
     for ch in range(image.shape[1]-1):
-        logger.info(f" Measuring channel {ch+2}...")
+        logger.info(f"  Measuring channel {ch+2}...")
         #Measure
         table = pd.DataFrame(
             measure.regionprops_table(
@@ -876,7 +952,7 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
 
 
     #measure distance to dendrite
-    logger.info(" Measuring distance to dendrite...")
+    logger.info("  Measuring distances to dendrite...")
     distance_table = pd.DataFrame(
         measure.regionprops_table(
             labels,
@@ -900,14 +976,14 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     volume_min = sizes[0] #3
     volume_max = sizes[1] #1500?
     
-    logger.info(f" Filtering spines between size {volume_min} and {volume_max} voxels...")
+    #logger.info(f" Filtering spines between size {volume_min} and {volume_max} voxels...")
     
 
     #filter based on volume
     filtered_table = main_table[(main_table['area'] > volume_min) & (main_table['area'] < volume_max) ] 
     
     #filter based on distance to dendrite
-    logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
+    #logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
     
     filtered_table = filtered_table[(filtered_table['dist_to_dendrite'] < dist)] 
     

@@ -14,7 +14,7 @@ __download__  = 'http://www.github.com/lahmmond/spinepipe'
 import sys
 import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
-                             QPushButton, QCheckBox, QLabel, QLineEdit, 
+                             QPushButton, QCheckBox, QLabel, QLineEdit, QComboBox, 
                              QMessageBox, QTextEdit, QWidget, QFileDialog, 
                              QGridLayout,QHBoxLayout, QGroupBox, QProgressBar, QSplashScreen,QFrame)
 from PyQt5.QtCore import Qt, pyqtSlot, QTime, QThread, pyqtSignal, QTimer, QObject
@@ -81,17 +81,18 @@ class Logger:
 class Worker(QThread):
     task_done = pyqtSignal(str)
 
-    def __init__(self, spinepipe, directory, other_options, GPU_block, spine_vol, spine_dist, HistMatch, Track, logger):
+    def __init__(self, spinepipe, directory, other_options, spine_vol, spine_dist, HistMatch, Track, reg_method, logger):
         
         super().__init__()
         self.spinepipe = spinepipe
         self.directory = directory
         self.other_options = other_options
-        self.GPU_block = GPU_block
+        #self.GPU_block = GPU_block
         self.spine_vol = spine_vol
         self.spine_dist = spine_dist
         self.HistMatch = HistMatch
         self.Track = Track
+        self.reg_method = reg_method
         self.logger = logger
         
 
@@ -103,6 +104,9 @@ class Worker(QThread):
             sys.path.append(self.spinepipe)
             from spinepipe.Environment import main, imgan, timer, strk
             main.check_gpu()
+            
+            if len(os.listdir(self.directory)) == 0:
+                self.logger.info("Selected directory contains no subfolders! \nPlease ensure your datasets are stored in subfolders nested within the selected directory.")
             
             for subfolder in os.listdir(self.directory):
                 subfolder_path = os.path.join(self.directory, subfolder)
@@ -131,20 +135,22 @@ class Worker(QThread):
                     settings.save_intermediate_data = False
                     #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
                     #settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
-                    settings.GPU_block_size = self.GPU_block
-                    settings.neuron_spine_size = self.spine_vol
-                    settings.neuron_spine_dist = self.spine_dist
+                    #settings.GPU_block_size = self.GPU_block
+                    settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in self.spine_vol] 
+                    settings.neuron_spine_dist = round(self.spine_dist / (settings.input_resXY),2)
                     settings.HistMatch = self.HistMatch
                     settings.Track = self.Track
+                    settings.reg_method = self.reg_method
         
         
                     self.logger.info("Processing folder: "+subfolder_path)
                     self.logger.info(f" Image resolution: {settings.input_resXY}um XY, {settings.input_resZ}um Z")
                     self.logger.info(f" Model used: {settings.neuron_seg_model_path}")    
                     self.logger.info(f" Model resolution: {settings.neuron_seg_model_res[0]}um XY, {settings.neuron_seg_model_res[2]}um Z")    
-                    self.logger.info(f" Spine volume set to: {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
+                    self.logger.info(f" Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} um3, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
+                    self.logger.info(f" Spine distance filter set to: {self.spine_dist} um, {settings.neuron_spine_dist} pixels") 
                     self.logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
-                    
+                    self.logger.info(f" Tracking set to: {settings.Track}, using {settings.reg_method} registration.") 
                     self.logger.info(f" {settings.neuron_seg_model_path}um Z")
                     #Processing
             
@@ -157,7 +163,8 @@ class Worker(QThread):
                     if settings.Track == True:
                         strk.track_spines(settings, locations, log, self.logger)
                         imgan.analyze_spines_4D(settings, locations, log, self.logger)
-            
+                    
+                    self.logger.info("")
                     self.logger.info("SpinePipe analysis complete.")
                     self.logger.info("SpinePipe Version: "+__version__)
                     self.logger.info("Release Date: "+__date__+"") 
@@ -234,21 +241,26 @@ class MainWindow(QMainWindow):
         options_layout.addWidget(self.analyze3)
         options_layout.addWidget(self.analyze4)
 
-        options_group2 = QGroupBox("Options")
+        options_group2 = QGroupBox("Analysis Options:")
         options_layout2 = QVBoxLayout()
         options_group2.setLayout(options_layout2)
-        self.save_intermediate = QCheckBox("Save intermediate data")
+        self.save_intermediate = QCheckBox("Save Intermediate Data")
         self.save_intermediate.setChecked(False) 
-        self.integer_label = QLabel("GPU block size (decrease block size if processing fails):")
-        self.integer_input = QLineEdit("150,500,500")
-        self.integer_label_2 = QLabel("Spine volume filter (min, max volume in voxels):")
-        self.integer_input_2 = QLineEdit("3,1500")
-        self.integer_label_3 = QLabel("Spine distance from dendrite filter (max distance in voxels):")
-        self.integer_input_3 = QLineEdit("500")
+        #self.integer_label = QLabel("GPU block size (decrease block size if processing fails):")
+        #self.integer_input = QLineEdit("150,500,500")
+        self.float_label_2 = QLabel("Spine volume filter (min, max volume in um3):")
+        self.float_input_2 = QLineEdit("0.03,15")
+        self.float_label_3 = QLabel("Spine distance filter (max distance from dendrite in um):")
+        self.float_input_3 = QLineEdit("4")
         self.HistMatch = QCheckBox("Histogram Matching (matches image histograms to first image in the series)")
         self.HistMatch.setChecked(False) 
         self.Track = QCheckBox("Spine Tracking (track spines over time, folder should contain sperate volumes for each timepoint)")
         self.Track.setChecked(False) 
+        self.reg_label = QLabel("Select registration method for aligning volumes across time:")
+        self.reg_method = QComboBox()
+        reg_options = ["Rigid", "Elastic"]
+        for option in reg_options:
+            self.reg_method.addItem(option)
         
         
         
@@ -256,13 +268,15 @@ class MainWindow(QMainWindow):
 
         options_layout2.addWidget(self.HistMatch)
         options_layout2.addWidget(self.Track)
+        options_layout2.addWidget(self.reg_label)
+        options_layout2.addWidget(self.reg_method)
         
-        options_layout2.addWidget(self.integer_label)
-        options_layout2.addWidget(self.integer_input)
-        options_layout2.addWidget(self.integer_label_2)
-        options_layout2.addWidget(self.integer_input_2)
-        options_layout2.addWidget(self.integer_label_3)
-        options_layout2.addWidget(self.integer_input_3)
+        #options_layout2.addWidget(self.integer_label)
+        #options_layout2.addWidget(self.integer_input)
+        options_layout2.addWidget(self.float_label_2)
+        options_layout2.addWidget(self.float_input_2)
+        options_layout2.addWidget(self.float_label_3)
+        options_layout2.addWidget(self.float_input_3)
 
         
 
@@ -361,34 +375,30 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", "No directory selected.")
             self.progress.setVisible(False)
             return
-        
+        """
         try:
             GPU_block = list(map(int, self.integer_input.text().split(',')))
         except ValueError:
             QMessageBox.critical(self, "Error", "Invalid input for GPU block.")
             self.progress.setVisible(False)
             return
-        
+        """
         try:
-            spine_vol = list(map(int, self.integer_input_2.text().split(',')))
+            spine_vol = list(map(float, self.float_input_2.text().split(',')))
         except ValueError:
             QMessageBox.critical(self, "Error", "Invalid input for spine volume.")
             self.progress.setVisible(False)
             return
         
         try:
-            spine_vol = list(map(int, self.integer_input_2.text().split(',')))
-        except ValueError:
-            QMessageBox.critical(self, "Error", "Invalid input for spine volume.")
-            self.progress.setVisible(False)
-            return
-        
-        try:
-            spine_dist =  int(self.integer_input_3.text())
+            spine_dist =  float(self.float_input_3.text())
         except ValueError:
             QMessageBox.critical(self, "Error", "Invalid input for spine distance to dendrite.")
             self.progress.setVisible(False)
             return
+        
+        reg_method =  str(self.reg_method.currentText())
+        
         
         HistMatch = self.HistMatch.isChecked()
         Track = self.Track.isChecked()
@@ -406,7 +416,7 @@ class MainWindow(QMainWindow):
 
 
         #self.worker = Worker(spinepipe, directory, channel_options, integers, self.logger.get_logger())
-        self.worker = Worker(spinepipe, directory, other_options, GPU_block, spine_vol, spine_dist, HistMatch, Track, self.logger)
+        self.worker = Worker(spinepipe, directory, other_options, spine_vol, spine_dist, HistMatch, Track, reg_method, self.logger)
        
         self.worker.task_done.connect(self.on_task_done)
         self.worker.start() 

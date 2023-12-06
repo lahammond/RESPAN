@@ -57,22 +57,25 @@ def track_spines(settings, locations, log, logger):
     logger.info("Registering and tracking spines...")
     
     #enhance nnUnet for registration if necessary
-    enhance_for_reg(locations.nnUnet_input, locations.nnUnet_input+"/enhanced/", settings, logger)
+    #enhance_for_reg(locations.nnUnet_input, locations.nnUnet_input+"/enhanced/", settings, logger)
 
     #Convert to nifti for reg
-    tiff_to_nifti(locations.nnUnet_input+"/enhanced/", locations.nnUnet_input+"/enhanced_image_nii/", logger)
-    tiff_to_nifti(locations.nnUnet_input, locations.nnUnet_input+"/image_nii/", logger)
-    labels_to_nifti(locations.labels, locations.labels+"/labels_nii/", logger)
+    #tiff_to_nifti(locations.nnUnet_input+"/enhanced/", locations.nnUnet_input+"/enhanced_image_nii/", logger)
+    #tiff_to_nifti(locations.nnUnet_input, locations.nnUnet_input+"/image_nii/", logger)
+    #labels_to_nifti(locations.labels, locations.labels+"/labels_nii/", logger)
 
     #registration - modify to include translation of all channels in raw data    
-    registered_images, registered_labels = serial_registration_of_images_and_labels(locations.nnUnet_input+"/enhanced_image_nii",locations.nnUnet_input+"/image_nii", locations.labels+"/labels_nii", logger)
+    #registered_images, registered_labels = serial_registration_of_images_and_labels(locations.nnUnet_input+"/enhanced_image_nii",locations.nnUnet_input+"/image_nii", locations.labels+"/labels_nii", settings, logger)
+    
+    #needs to be modified to ensure registers neuron channel and translates other channels
+    registered_images, registered_labels = serial_registration_of_np_images_and_labels(settings, locations, logger)
 
 
-    save_registered_images_to_tif(registered_images, locations.nnUnet_input+"/registered", logger)
-    save_registered_images_to_tif(registered_labels, locations.input_dir+"/Validation_Data/Registered_segmentation_labels", logger)
+    #save_registered_images_to_tif(registered_images, locations.nnUnet_input+"/registered", logger)
+    #save_registered_images_to_tif(registered_labels, locations.input_dir+"/Validation_Data/Registered_segmentation_labels", logger)
 
-    final_array = save_as_4d_tiff(registered_images, locations.input_dir+"/Registered/", "Registered_images_4d.tif", logger)
-    final_array = save_as_4d_tiff(registered_labels, locations.input_dir+"/Registered/", "Registered_labels_4d.tif", logger)
+    final_array = save_as_4d_tiff(registered_images, locations.input_dir+"/Registered/", "Registered_images_4d.tif", "Registered_images_4d_MIP.tif", logger)
+    final_array = save_as_4d_tiff(registered_labels, locations.input_dir+"/Registered/", "Registered_labels_4d.tif", "Registered_labels_4d_MIP.tif", logger)
     
    
 
@@ -118,7 +121,7 @@ def contrast_stretch(image, pmin=2, pmax=98):
 
 
 
-def save_as_4d_tiff(images, outputdir, filename, logger):
+def save_as_4d_tiff(images, outputdir, filename, filename2, logger):
     """
     Save a 4D numpy array as a TIFF image.
     
@@ -132,9 +135,9 @@ def save_as_4d_tiff(images, outputdir, filename, logger):
        os.makedirs(outputdir)
        
     # Convert each ANTs image to a numpy array and stack to form a 4D array
-    stacked_array = np.stack([img.numpy() for img in images], axis=0)
+    #stacked_array = np.stack([img.numpy() for img in images], axis=0)
     #logger.info(stacked_array.shape)
-    reordered_array = np.moveaxis(stacked_array, [0, 1, 2, 3], [0, 3, 2, 1])
+    reordered_array = np.moveaxis(images, [0, 1, 2, 3], [0, 3, 2, 1])
     #add an axis for C at position 0
     final_array = reordered_array[:, :, np.newaxis,  :, :]
     
@@ -145,8 +148,209 @@ def save_as_4d_tiff(images, outputdir, filename, logger):
     imwrite(outputdir+filename, final_array.astype(np.uint16), imagej=True, photometric='minisblack',
             metadata={'spacing': 1, 'unit': 'um','axes': 'TZCYX', 'mode': 'composite'})
     
+    final_array = np.max(final_array, axis=1)
+    imwrite(outputdir+filename2, final_array.astype(np.uint16), imagej=True, photometric='minisblack',
+            metadata={'spacing': 1, 'unit': 'um','axes': 'TCYX', 'mode': 'composite'})
+    
     return(final_array)
 
+
+def serial_registration_of_np_images_and_labels(settings, locations, logger):
+    """
+    Serially register a list of images using rigid body registration with ANTsPy.
+    
+    Parameters:
+        images_list (list of str): List of image paths in order they should be registered.
+    
+    Returns:
+        list of ANTsImage: List of registered images.
+    """
+    
+    # Sort filenames to ensure the correct order
+    #enhanced_list = sorted([os.path.join(enhanced_input_path, filename) for filename in os.listdir(enhanced_input_path) if filename.endswith('.nii')])
+    
+    images_list = sorted([os.path.join(locations.nnUnet_input, filename) for filename in os.listdir(locations.nnUnet_input) if filename.endswith('.tif')])
+
+    labels_list = sorted([os.path.join(locations.labels, filename) for filename in os.listdir(locations.labels) if filename.endswith('.tif')])
+
+    if not images_list:
+        raise ValueError("No images found in the provided folder.")
+
+    
+
+    #values for direct converstion from np to ants
+    ants_spacing =(1.0, 1.0, 1.0)
+    ants_origin = (0.0, 0.0, 0.0)
+    ants_direction = ([[-1.,  0.,  0.], [ 0., -1.,  0.], [ 0.,  0.,  1.]])
+   
+
+    #registered_enhanced = []
+    registered_images = []
+    registered_labels = []
+    
+    
+    #read in Tifs
+    # The first image is considered the fixed image for the first registration
+    #fixed_enhanced = imread(enhanced_list[0])
+    fixed_image = imread(images_list[0])
+    fixed_label = imread(labels_list[0])
+    
+    
+    #Perform any modifications on Tifs
+    #fixed_enhanced[fixed_enhanced == 0] = 1
+    #pad the arrays with black for better resutls - if using elastic
+    pad_width = 10 #10 - put these parameters in settings file if necessary
+    minSlices = 1 #5 - disabled but use for z rescale if necessary
+    rescale = 0.3 # - z rescale if minslices enabled
+    
+    #swap axes for ants and pad if necessary
+    fixed_image = np.swapaxes(np.pad(fixed_image, pad_width), 0, 2)
+    fixed_label = np.swapaxes(np.pad(fixed_label, pad_width), 0, 2)
+       
+
+    
+    #rescale if necessary
+    if fixed_image.shape[2] < minSlices:
+        #fixed_enhanced = ants.resample_image(fixed_enhanced, (1, 1, rescale), use_voxels=False, interp_type=4)
+        fixed_image = ants.resample_image(fixed_image, (1, 1, rescale), use_voxels=False, interp_type=4)
+        fixed_label = ants.resample_image(fixed_label, (1, 1, rescale), use_voxels=False, interp_type=0)
+    
+    #convert to ants
+    #fixed_enhanced = ants.from_numpy(fixed_enhanced.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+    fixed_image = ants.from_numpy(fixed_image.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+    fixed_label = ants.from_numpy(fixed_label.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+
+    #append to image list
+    #registered_enhanced.append(fixed_enhanced)
+    registered_images.append(fixed_image)
+    registered_labels.append(fixed_label)
+    
+    
+    logger.info("Registering and transforming images...")
+
+    for i in range(1, len(images_list)):
+        logger.info(f" Registering images {i} and {i+1} of {len(images_list)}.")
+        #moving_enhanced = np.swapaxes(imread(enhanced_list[i]), 0, 2)
+        moving_image = np.swapaxes(imread(images_list[i]), 0, 2)
+        moving_label = np.swapaxes(imread(labels_list[i]), 0, 2)
+        
+        #Pad
+        #moving_enhanced = np.pad(moving_enhanced, pad_width)
+        moving_image = np.pad(moving_image, pad_width)
+        moving_label = np.pad(moving_label, pad_width)  
+        
+        
+        #mask testing
+        #mask2 = moving_label > 0
+        #moving_image = np.where(mask2, moving_image, 0)
+        
+        #rescale if necessary
+        if moving_image.shape[2] < minSlices:
+            #moving_enhanced = ants.resample_image(moving_enhanced, (1, 1, rescale), use_voxels=False, interp_type=4)
+            moving_image = ants.resample_image(moving_image, (1, 1, rescale), use_voxels=False, interp_type=4)
+            moving_label = ants.resample_image(moving_label, (1, 1, rescale), use_voxels=False, interp_type=0)
+        
+        #Convert to ants
+        #convert to ants
+        #moving_enhanced = ants.from_numpy(moving_enhanced.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+        moving_image = ants.from_numpy(moving_image.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+        moving_label = ants.from_numpy(moving_label.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+        
+        #print("Rigid reg")
+        registration = ants.registration(
+            fixed=fixed_image,
+            moving=moving_image,
+            type_of_transform='DenseRigid', #Rigid
+            initial_transform=None, 
+            outprefix='', 
+            mask=None, 
+            moving_mask=None, 
+            mask_all_stages=False, 
+            grad_step=0.1,  #0.2
+            flow_sigma=0, #3 
+            total_sigma=0, 
+            aff_metric='mattes', 
+            aff_sampling=20, #32
+            aff_random_sampling_rate=0.2, #0.2
+            syn_metric='mattes', 
+            syn_sampling=10, #32
+            reg_iterations=(200, 100, 50),   #(40, 20, 0) #20000, 10000, 5000
+            write_composite_transform=False, 
+            random_seed=None, 
+            verbose=False, 
+            multivariate_extras=None, 
+            restrict_transformation=None, 
+            smoothing_in_mm=False
+
+        )
+        
+        
+        if settings.reg_method == "Elastic":
+            print("Elastic reg")
+            # Stage 2: Affine Registration (optional, can be included for additional refinement)
+            elastic_registration = ants.registration(
+                fixed=fixed_image,
+                moving=registration['warpedmovout'],
+                type_of_transform='SyNAggro',
+                mask_all_stages=False
+                #grad_step=0.8, #gradient step size (not for all tx)
+                #flow_sigma=3, #smoothing for update field
+                #total_sigma=0, #smoothing for total field
+                #aff_metric='mattes', #the metric for the affine part (GC, mattes, meansquares)
+                #aff_sampling=64, #the nbins or radius parameter for the syn metric
+                #aff_random_sampling_rate=0.8, #the fraction of points used to estimate the metric. this can impact speed but also reproducibility and/or accuracy.
+                #syn_metric='mattes', #the metric for the syn part (CC, mattes, meansquares, demons)
+                #syn_sampling=32, #the nbins or radius parameter for the syn metric
+                #reg_iterations=(2000, 2000, 50), # vector of iterations for syn. we will set the smoothing and multi-resolution parameters based on the length of this vector.
+                #aff_iterations=(100, 100, 50), #vector of iterations for low-dimensional (translation, rigid, affine) registration.
+                #aff_shrink_factors=(0.5, 0, 0), #vector of multi-resolution shrink factors for low-dimensional (translation, rigid, affine) registration.
+                #aff_smoothing_sigmas=(0.5, 0, 0), #vector of multi-resolution smoothing factors for low-dimensional (translation, rigid, affine) registration.
+                #write_composite_transform=False, #Boolean specifying whether or not the composite transform (and its inverse, if it exists) should be written to an hdf5 composite file. This is false by default so that only the transform for each stage is written to file.
+                #random_seed=None, #random seed to improve reproducibility. note that the number of ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS should be 1 if you want perfect reproducibility.
+                #verbose=False, #request verbose output (useful for debugging)
+                #multivariate_extras=None, #list of additional images and metrics which will trigger the use of multiple metrics in the registration process in the deformable stage. Each multivariate metric needs 5 entries: name of metric, fixed, moving, weight, samplingParam. the list of lists should be of the form ( ( “nameOfMetric2”, img, img, weight, metricParam ) ). Another example would be ( ( “MeanSquares”, f2, m2, 0.5, 0
+                #, ( “CC”, f2, m2, 0.5, 2 ) ) . This is only compatible    with the SyNOnly or antsRegistrationSyN* transformations.
+                #restrict_transformation=None, #This option allows the user to restrict the) – optimization of the displacement field, translation, rigid or affine transform on a per-component basis. For example, if one wants to limit the deformation or rotation of 3-D volume to the first two dimensions, this is possible by specifying a weight vector of ‘(1,1,0)’ for a 3D deformation field or ‘(1,1,0,1,1,0)’ for a rigid transformation. Restriction currently only works if there are no preceding transformations.
+                #smoothing_in_mm=False #(boolean ; currently only impacts low dimensional registration)
+      
+      
+                ) 
+          
+          
+            #combine transforms
+            fwd_transform = registration['fwdtransforms'] + \
+                            elastic_registration['fwdtransforms']
+          
+      
+        #warped_label = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_label, transformlist=registration['fwdtransforms'], interpolator='genericLabel') #'nearestNeighbor')
+        #warped_image = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_image, transformlist=registration['fwdtransforms'], interpolator='linear')
+        if settings.reg_method == "Rigid":
+            warped_label = ants.apply_transforms(fixed=fixed_image, moving=moving_label, transformlist=registration['fwdtransforms'], interpolator='genericLabel') #'nearestNeighbor')
+            warped_image = ants.apply_transforms(fixed=fixed_image, moving=moving_image, transformlist=registration['fwdtransforms'], interpolator='linear')
+            # The registered image becomes the new fixed image for the next iteration
+            fixed_image = registration['warpedmovout'] 
+      
+        if settings.reg_method == "Elastic":
+            warped_label = ants.apply_transforms(fixed=fixed_image, moving=moving_label, transformlist=fwd_transform, interpolator='genericLabel', defaultvalue=0) #'nearestNeighbor')
+            warped_image = ants.apply_transforms(fixed=fixed_image, moving=moving_image, transformlist=fwd_transform, interpolator='linear', defaultvalue=0)
+            fixed_image = elastic_registration['warpedmovout']
+              
+        
+        registered_images.append(warped_image)
+        registered_labels.append(warped_label)
+       
+    if pad_width >0:
+        for i in range(len(registered_images)):
+            registered_images[i] = registered_images[i][pad_width:-pad_width, pad_width:-pad_width, pad_width:-pad_width]
+            registered_labels[i] = registered_labels[i][pad_width:-pad_width, pad_width:-pad_width, pad_width:-pad_width]
+
+    # Stack along a new first axis to create 4D array
+    registered_images = np.stack(registered_images, axis=0)
+    registered_labels = np.stack(registered_labels, axis=0)
+    
+    logger.info(f"Registration complete. \n")
+
+    return registered_images, registered_labels
 
 def serial_registration_from_folder_rigid(input_path, logger):
     """
@@ -227,12 +431,12 @@ def serial_registration_from_folder_rigid(input_path, logger):
     # Stack along a new first axis to create 4D array
     registered_images = np.stack(registered_images, axis=0)
 
-    logger.info(f"Registration complete./n")
+    logger.info(f" Registration complete.\n")
     
     return registered_images
 
 
-def serial_registration_of_images_and_labels(enhanced_input_path, img_input_path, labels_input_path, logger):
+def serial_registration_of_images_and_labels(enhanced_input_path, img_input_path, labels_input_path, settings, logger):
     """
     Serially register a list of images using rigid body registration with ANTsPy.
     
@@ -268,9 +472,10 @@ def serial_registration_of_images_and_labels(enhanced_input_path, img_input_path
     registered_images.append(fixed_image)
     registered_labels.append(fixed_label)
     
+    logger.info("Registering and transforming images...")
 
     for i in range(1, len(images_list)):
-        logger.info(f"Processing: {images_list[i]}")
+        logger.info(f" Processing {i} of {len(images_list)}.")
         moving_enhanced = ants.image_read(enhanced_list[i])
         
         moving_image = ants.image_read(images_list[i])
@@ -320,14 +525,57 @@ def serial_registration_of_images_and_labels(enhanced_input_path, img_input_path
             #smoothing_sigmas=[[0, 0, 0]]
         )
         
-          
         
-        warped_label = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_label, transformlist=registration['fwdtransforms'], interpolator='genericLabel') #'nearestNeighbor')
-        warped_image = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_image, transformlist=registration['fwdtransforms'], interpolator='linear')
+        if settings.reg_method == "Elastic":
+            print("Elastic reg")
+            # Stage 2: Affine Registration (optional, can be included for additional refinement)
+            elastic_registration = ants.registration(
+                fixed=fixed_image,
+                moving=registration['warpedmovout'],
+                type_of_transform='SyNAggro',
+                mask_all_stages=False
+                #grad_step=0.8, #gradient step size (not for all tx)
+                #flow_sigma=3, #smoothing for update field
+                #total_sigma=0, #smoothing for total field
+                #aff_metric='mattes', #the metric for the affine part (GC, mattes, meansquares)
+                #aff_sampling=64, #the nbins or radius parameter for the syn metric
+                #aff_random_sampling_rate=0.8, #the fraction of points used to estimate the metric. this can impact speed but also reproducibility and/or accuracy.
+                #syn_metric='mattes', #the metric for the syn part (CC, mattes, meansquares, demons)
+                #syn_sampling=32, #the nbins or radius parameter for the syn metric
+                #reg_iterations=(2000, 2000, 50), # vector of iterations for syn. we will set the smoothing and multi-resolution parameters based on the length of this vector.
+                #aff_iterations=(100, 100, 50), #vector of iterations for low-dimensional (translation, rigid, affine) registration.
+                #aff_shrink_factors=(0.5, 0, 0), #vector of multi-resolution shrink factors for low-dimensional (translation, rigid, affine) registration.
+                #aff_smoothing_sigmas=(0.5, 0, 0), #vector of multi-resolution smoothing factors for low-dimensional (translation, rigid, affine) registration.
+                #write_composite_transform=False, #Boolean specifying whether or not the composite transform (and its inverse, if it exists) should be written to an hdf5 composite file. This is false by default so that only the transform for each stage is written to file.
+                #random_seed=None, #random seed to improve reproducibility. note that the number of ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS should be 1 if you want perfect reproducibility.
+                #verbose=False, #request verbose output (useful for debugging)
+                #multivariate_extras=None, #list of additional images and metrics which will trigger the use of multiple metrics in the registration process in the deformable stage. Each multivariate metric needs 5 entries: name of metric, fixed, moving, weight, samplingParam. the list of lists should be of the form ( ( “nameOfMetric2”, img, img, weight, metricParam ) ). Another example would be ( ( “MeanSquares”, f2, m2, 0.5, 0
+                #, ( “CC”, f2, m2, 0.5, 2 ) ) . This is only compatible    with the SyNOnly or antsRegistrationSyN* transformations.
+                #restrict_transformation=None, #This option allows the user to restrict the) – optimization of the displacement field, translation, rigid or affine transform on a per-component basis. For example, if one wants to limit the deformation or rotation of 3-D volume to the first two dimensions, this is possible by specifying a weight vector of ‘(1,1,0)’ for a 3D deformation field or ‘(1,1,0,1,1,0)’ for a rigid transformation. Restriction currently only works if there are no preceding transformations.
+                #smoothing_in_mm=False #(boolean ; currently only impacts low dimensional registration)
+
+
+                ) 
+        
+        
+            #combine transforms
+            fwd_transform = registration['fwdtransforms'] + \
+                            elastic_registration['fwdtransforms']
             
         
-        # The registered image becomes the new fixed image for the next iteration
-        fixed_enhanced = registration['warpedmovout']
+        #warped_label = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_label, transformlist=registration['fwdtransforms'], interpolator='genericLabel') #'nearestNeighbor')
+        #warped_image = ants.apply_transforms(fixed=fixed_enhanced, moving=moving_image, transformlist=registration['fwdtransforms'], interpolator='linear')
+        if settings.reg_method == "Rigid":
+            warped_label = ants.apply_transforms(fixed=fixed_image, moving=moving_label, transformlist=registration['fwdtransforms'], interpolator='genericLabel') #'nearestNeighbor')
+            warped_image = ants.apply_transforms(fixed=fixed_image, moving=moving_image, transformlist=registration['fwdtransforms'], interpolator='linear')
+            # The registered image becomes the new fixed image for the next iteration
+            fixed_image = registration['warpedmovout'] 
+        
+        if settings.reg_method == "Elastic":
+            warped_label = ants.apply_transforms(fixed=fixed_image, moving=moving_label, transformlist=fwd_transform, interpolator='genericLabel', defaultvalue=0) #'nearestNeighbor')
+            warped_image = ants.apply_transforms(fixed=fixed_image, moving=moving_image, transformlist=fwd_transform, interpolator='linear', defaultvalue=0)
+            fixed_image = elastic_registration['warpedmovout']
+                     
         
         registered_images.append(warped_image)
         registered_labels.append(warped_label)
@@ -336,6 +584,8 @@ def serial_registration_of_images_and_labels(enhanced_input_path, img_input_path
     # Stack along a new first axis to create 4D array
     registered_images = np.stack(registered_images, axis=0)
     registered_labels = np.stack(registered_labels, axis=0)
+    
+    logger.info(f"Registration complete. \n")
 
     return registered_images, registered_labels
 

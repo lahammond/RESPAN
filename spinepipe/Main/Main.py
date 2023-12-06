@@ -156,6 +156,8 @@ class Create_Settings():
             self.GPU_block_size = list(map(int, (ast.literal_eval(setting["Analysis"]["GPU_block_size"]))))
             
             self.spine_roi_volume_size = setting["Analysis"]["spine_roi_volume_size"]
+            self.erode_shape = list(map(int, (ast.literal_eval(setting["Analysis"]["erode_shape"]))))
+            self.remove_touching_boarders = setting["Analysis"]["remove_touching_boarders"]
             
             self.save_intermediate_data = setting["Analysis"]["save_intermediate_data"]
             self.save_val_data = setting["Analysis"]["save_val_data"]
