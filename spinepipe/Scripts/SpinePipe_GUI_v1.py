@@ -4,8 +4,8 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.4'
-__date__      = "19 November, 2023"
+__version__   = '0.9.5'
+__date__      = "6 December, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -81,13 +81,13 @@ class Logger:
 class Worker(QThread):
     task_done = pyqtSignal(str)
 
-    def __init__(self, spinepipe, directory, other_options, spine_vol, spine_dist, HistMatch, Track, reg_method, logger):
+    def __init__(self, spinepipe, directory, other_options, min_dendrite_vol, spine_vol, spine_dist, HistMatch, Track, reg_method, logger):
         
         super().__init__()
         self.spinepipe = spinepipe
         self.directory = directory
         self.other_options = other_options
-        #self.GPU_block = GPU_block
+        self.min_dendrite_vol = min_dendrite_vol
         self.spine_vol = spine_vol
         self.spine_dist = spine_dist
         self.HistMatch = HistMatch
@@ -134,8 +134,7 @@ class Worker(QThread):
                     #Modify specific parameters and settings:    
                     settings.save_intermediate_data = False
                     #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
-                    #settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
-                    #settings.GPU_block_size = self.GPU_block
+                    settings.min_dendrite_vol = self.min_dendrite_vol #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
                     settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in self.spine_vol] 
                     settings.neuron_spine_dist = round(self.spine_dist / (settings.input_resXY),2)
                     settings.HistMatch = self.HistMatch
@@ -246,15 +245,15 @@ class MainWindow(QMainWindow):
         options_group2.setLayout(options_layout2)
         self.save_intermediate = QCheckBox("Save Intermediate Data")
         self.save_intermediate.setChecked(False) 
-        #self.integer_label = QLabel("GPU block size (decrease block size if processing fails):")
-        #self.integer_input = QLineEdit("150,500,500")
-        self.float_label_2 = QLabel("Spine volume filter (min, max volume in um3):")
+        self.float_label_1 = QLabel("Minimum dendrite size in um3 (dendrites smaller than this will be ignored):")
+        self.float_input_1 = QLineEdit("15")
+        self.float_label_2 = QLabel("Spine volume range (min, max volume in um3):")
         self.float_input_2 = QLineEdit("0.03,15")
-        self.float_label_3 = QLabel("Spine distance filter (max distance from dendrite in um):")
+        self.float_label_3 = QLabel("Spine distance threshold (max distance from dendrite in um):")
         self.float_input_3 = QLineEdit("4")
         self.HistMatch = QCheckBox("Histogram Matching (matches image histograms to first image in the series)")
         self.HistMatch.setChecked(False) 
-        self.Track = QCheckBox("Spine Tracking (track spines over time, folder should contain sperate volumes for each timepoint)")
+        self.Track = QCheckBox("Spine Tracking (track spines over time, subfolders should contain sperate volumes for each timepoint)")
         self.Track.setChecked(False) 
         self.reg_label = QLabel("Select registration method for aligning volumes across time:")
         self.reg_method = QComboBox()
@@ -271,8 +270,8 @@ class MainWindow(QMainWindow):
         options_layout2.addWidget(self.reg_label)
         options_layout2.addWidget(self.reg_method)
         
-        #options_layout2.addWidget(self.integer_label)
-        #options_layout2.addWidget(self.integer_input)
+        options_layout2.addWidget(self.float_label_1)
+        options_layout2.addWidget(self.float_input_1)
         options_layout2.addWidget(self.float_label_2)
         options_layout2.addWidget(self.float_input_2)
         options_layout2.addWidget(self.float_label_3)
@@ -384,6 +383,13 @@ class MainWindow(QMainWindow):
             return
         """
         try:
+            min_dendrite_vol =  float(self.float_input_1.text())
+        except ValueError:
+            QMessageBox.critical(self, "Error", "Invalid input for minimum dendrite volume.")
+            self.progress.setVisible(False)
+            return
+        
+        try:
             spine_vol = list(map(float, self.float_input_2.text().split(',')))
         except ValueError:
             QMessageBox.critical(self, "Error", "Invalid input for spine volume.")
@@ -416,7 +422,7 @@ class MainWindow(QMainWindow):
 
 
         #self.worker = Worker(spinepipe, directory, channel_options, integers, self.logger.get_logger())
-        self.worker = Worker(spinepipe, directory, other_options, spine_vol, spine_dist, HistMatch, Track, reg_method, self.logger)
+        self.worker = Worker(spinepipe, directory, other_options, min_dendrite_vol, spine_vol, spine_dist, HistMatch, Track, reg_method, self.logger)
        
         self.worker.task_done.connect(self.on_task_done)
         self.worker.start() 
@@ -469,6 +475,6 @@ app.processEvents()
 
 window = MainWindow()
 window.setWindowTitle(f' SpinePipe - Version: {__version__}')
-window.setGeometry(100, 100, 1200, 800)  
+window.setGeometry(100, 100, 1200, 1200)  
 window.show()
 sys.exit(app.exec_())

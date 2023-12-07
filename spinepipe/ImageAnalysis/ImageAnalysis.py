@@ -6,8 +6,8 @@ Image Analysis tools and functions for spine analysis
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.4'
-__date__      = "19 November, 2023"
+__version__   = '0.9.5'
+__date__      = "6 December, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -277,7 +277,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
     
     stdout, cmd = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, 
-                                locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings)
+                                locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings, logger)
     
     #logger.info(cmd)
     
@@ -353,10 +353,10 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
     #logger.info("Segmentation complete.\n")
     return stdout
 
-def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id, nnunet_type, settings):
+def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id, nnunet_type, settings, logger):
     # Set environment variables
     
-    initialize_nnUnet(settings)
+    initialize_nnUnet(settings, logger)
     
     activate_env = fr"{conda_dir}\Scripts\activate.bat && set PATH={conda_dir}\envs\{nnUnet_env}\Scripts;%PATH%"
 
@@ -405,10 +405,11 @@ def run_command_in_conda_env(command, env, python):
     result = subprocess.run(command, capture_output=True, text=True, shell=True)
     return result
 
-def initialize_nnUnet(settings):
+def initialize_nnUnet(settings, logger):
     os.environ['nnUNet_raw'] = settings.nnUnet_raw
     os.environ['nnUNet_preprocessed'] = settings.nnUnet_preprocessed
-    nnUnet_results = settings.neuron_seg_model_path
+    nnUnet_results = Path(settings.neuron_seg_model_path).parent
+    nnUnet_results = str(nnUnet_results).replace("\\", "/")
     os.environ['nnUNet_results'] = nnUnet_results
     
 
@@ -470,55 +471,119 @@ def analyze_spines(settings, locations, log, logger):
 
         
         spines = (labels == 1)
-        dendrites = (labels == 2)
+        all_dendrites = (labels == 2)
         #soma = (image == 3).astype(np.uint8)
+        spines_orig = spines * 65535
         
-        #Create Distance Map
-
-        dendrite_distance = ndimage.distance_transform_edt(np.invert(dendrites)) #invert neuron mask to get outside distance  
-        dendrites = dendrites.astype(np.uint8)
-        skeleton = morphology.skeletonize_3d(dendrites)
-        #if settings.save_val_data == True:
-        #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
+        dendrite_labels = measure.label(all_dendrites)
         
-        #Create Neuron MIP for validation - include distance map too
-        #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
-        #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
-
-        #Detection
-        logger.info(" Detecting spines...")
-        spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
+        all_filtered_spines = np.zeros_like(spines)
+        all_skeletons = np.zeros_like(spines)
+        
+        all_filtered_spines_table = pd.DataFrame()
+        
+        min_dendrite_vol = round(settings.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
+        
+        for dendrite in range(1, np.max(dendrite_labels)+1):
+            logger.info(f" Detecting spines on dendrite {dendrite}...")
+            dendrite_mask = dendrite_labels == dendrite
+            
+            if np.sum(dendrite_mask) > min_dendrite_vol:
+                
+            
+                #Create Distance Map
     
+                dendrite_distance = ndimage.distance_transform_edt(np.invert(dendrite_mask)) #invert neuron mask to get outside distance  
+                dendrite_mask = dendrite_mask.astype(np.uint8)
+                skeleton = morphology.skeletonize_3d(dendrite_mask)
+                all_skeletons = skeleton + all_skeletons
+                #if settings.save_val_data == True:
+                #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
+                
+                #Create Neuron MIP for validation - include distance map too
+                #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
+                #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
+                
+               
+                
+                #Detection
+                
+                spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
+                
+                #tifffile.imwrite(locations.MIPs+"spines_"+str(dendrite)+files[file], spine_labels.astype(np.uint16), imagej=True, photometric='minisblack',
+                #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
+                        
+                #offset object counts to ensure unique ids 
+                max_label = np.max(all_filtered_spines)
+                #logger.info(max_label)
+                #Measurements
+                spine_table, summary, spines_filtered = spine_measurements(image, spine_labels, dendrite, max_label, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, files[file], logger)
+                                                                  #soma_mask, soma_distance, )
+                
+                #tifffile.imwrite(locations.MIPs+"filtered_"+str(dendrite)+files[file], spines_filtered.astype(np.uint16), imagej=True, photometric='minisblack',
+                #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
+                
+                
+                #offset detected objects in image and add to all spines
+                
+                #logger.info(np.max(spines_filtered))
+                all_filtered_spines = all_filtered_spines + spines_filtered
+                #logger.info(f"{all_filtered_spines.shape}  {spines_filtered.shape}")
     
-        #Measurements
-        spine_table, summary, spines_filtered = spine_measurements(image, spine_labels, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, files[file], logger)
-                                                          #soma_mask, soma_distance, )
+                #remove detected spines from original spine image to prevent double counting
+                spines[spines_filtered > 0] = 0
+                            
+    
+                # update summary with additional metrics
+                summary.insert(1, 'res_XY', settings.input_resXY)  
+                summary.insert(2, 'res_Z', settings.input_resZ)
+                dendrite_length = np.sum(skeleton == 1)
+                #summary.insert(3, 'Dendrite_ID', dendrite)
+                summary.insert(3, 'dendrite_length', dendrite_length)
+                dendrite_length_um = dendrite_length*settings.input_resXY
+                summary.insert(4, 'dendrite_length_um', dendrite_length_um)
+                dendrite_volume = np.sum(dendrite_mask ==1)
+                summary.insert(5, 'dendrite_vol', dendrite_volume)
+                dendrite_volume_um3 = dendrite_volume*settings.input_resXY*settings.input_resXY*settings.input_resZ
+                summary.insert(6, 'dendrite_vol_um3', dendrite_volume_um3)
+                summary.insert(9, 'spines_per_um_length', summary['total_spines'][0]/dendrite_length_um)
+                summary.insert(10, 'spines_per_um3_vol', summary['total_spines'][0]/dendrite_volume_um3)
+                                                              
+                #append to summary
+                # Append to the overall summary DataFrame
+                spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
+                all_filtered_spines_table = pd.concat([all_filtered_spines_table, spine_table], ignore_index=True)
+                
+                
+            else:
+                logger.info(f"  Dendrite excluded. Volume smaller than threshold of {min_dendrite_vol} voxels")
         
-        # update summary with additional metrics
-        summary.insert(1, 'res_XY', settings.input_resXY)  
-        summary.insert(2, 'res_Z', settings.input_resZ)
-        dendrite_length = np.sum(skeleton == 1)
-        summary.insert(3, 'dendrite_length', dendrite_length)
-        dendrite_length_um = dendrite_length*settings.input_resXY
-        summary.insert(4, 'dendrite_length_um', dendrite_length_um)
-        dendrite_volume = np.sum(dendrites ==1)
-        summary.insert(5, 'dendrite_vol', dendrite_volume)
-        dendrite_volume_um3 = dendrite_volume*settings.input_resXY*settings.input_resXY*settings.input_resZ
-        summary.insert(6, 'dendrite_vol_um3', dendrite_volume_um3)
-        summary.insert(9, 'spines_per_um_length', summary['total_spines'][0]/dendrite_length_um)
-        summary.insert(10, 'spines_per_um3_vol', summary['total_spines'][0]/dendrite_volume_um3)
-                                                          
-        #append to summary
-        # Append to the overall summary DataFrame
-        spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
+        #spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
         
         
+        #relable the label image
+        # Get unique labels while preserving the order
+        unique_labels = np.unique(all_filtered_spines[all_filtered_spines > 0])
+        #logger.info(unique_labels)
+        # Create a mapping from old labels to new sequential labels
+        label_mapping = {labelx: i for i, labelx in enumerate(unique_labels, start=1)}
+
+        # Apply this mapping to the image to create a relabelled image
+        relabelled_spines = np.copy(all_filtered_spines)
+        for old_label, new_label in label_mapping.items():
+            relabelled_spines[relabelled_spines == old_label] = new_label
         
-        neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
+        all_filtered_spines_table['label'] = all_filtered_spines_table['label'].map(label_mapping)
+       
+        
+        
+        all_filtered_spines_table.to_csv(locations.tables + 'Detected_spines_'+files[file]+'.csv',index=False) 
+        
+        neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines_orig, relabelled_spines, dendrite_labels, all_skeletons, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
         
  
         #Extract MIPs for each spine
-        spine_MIPs, spine_slices, filtered_spine_MIPs, filtered_spine_slices= create_spine_arrays_in_blocks(image, spines_filtered, spine_table, settings.spine_roi_volume_size, settings, locations, files[file],  logger, settings.GPU_block_size)
+        spine_MIPs, spine_slices, filtered_spine_MIPs, filtered_spine_slices= create_spine_arrays_in_blocks(image, relabelled_spines, all_filtered_spines_table, settings.spine_roi_volume_size, settings, locations, files[file],  logger, settings.GPU_block_size)
     
     
         logger.info(f" Image processing complete for file {files[file]}\n")
@@ -605,7 +670,7 @@ def analyze_spines_4D(settings, locations, log, logger):
     
     for t in range(labels.shape[0]):
         logger.info(f" Measuring timepoint {t+1} of {labels.shape[0]}.")
-        spine_table, summary, spines_filtered = spine_measurements(image[t,:,:,:], spine_labels[t,:,:,:], settings.neuron_channel, dendrite_distance[t,:,:,:], settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, datasetname, logger)
+        spine_table, summary, spines_filtered = spine_measurements(image[t,:,:,:], spine_labels[t,:,:,:], 1, 0, settings.neuron_channel, dendrite_distance[t,:,:,:], settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, datasetname, logger)
                                                               #soma_mask, soma_distance, )
         if t == 0:
             previous_spines = set(np.unique(spines_filtered))
@@ -679,7 +744,8 @@ def analyze_spines_4D(settings, locations, log, logger):
     neuron_MIP = create_mip_and_save_multichannel_tiff_4d([neuron, spines, spines_filtered_all, dendrites, skeleton, dendrite_distance], locations.input_dir+"/Registered/Registered_MIPs_4D.tif", 'float', settings)
     
     #Extract MIPs for each spine
-    spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.spine_roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
+    if len(y_over_t) >=1:
+        spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.spine_roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
 
     #Cleanup
     if os.path.exists(locations.nnUnet_input): shutil.rmtree(locations.nnUnet_input)
@@ -818,28 +884,6 @@ def spine_detection(spines, erode, remove_borders, logger):
 
     return labels
 
-def dendrite_detection(dendrite, logger):
-    #with warnings.catch_warnings():
-    #    warnings.simplefilter("ignore")
-    #    spines_clean = morphology.remove_small_holes(spines, holes)
-    
-    else:
-        labels = measure.label(spines)
-        
-    #Remove objects touching border
-    if remove_borders == True:
-        padded = np.pad(
-          labels,
-          ((1, 1), (0, 0), (0, 0)),
-          mode='constant',
-          constant_values=0,
-          )
-        labels = segmentation.clear_border(padded)[1:-1]
-        
-    # add new axis for labels
-    #labels = labels[:, np.newaxis, :, :]
-
-    return labels
 
 def spine_detection_4d(spines, erode, remove_borders, logger):
     #with warnings.catch_warnings():
@@ -895,7 +939,7 @@ def create_ellipsoidal_element(radius_z, radius_y, radius_x):
 
     return ellipsoid
 
-def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
+def spine_measurements(image, labels, dendrite, max_label, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
     """ measures intensity of each channel, as well as distance to dendrite
     Args:
         labels (detected cells)
@@ -980,24 +1024,39 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     
 
     #filter based on volume
+    #logger.info(f"  filtered table before area = {len(main_table)}")
     filtered_table = main_table[(main_table['area'] > volume_min) & (main_table['area'] < volume_max) ] 
+    #logger.info(f"  filtered table after area = {len(filtered_table)}")
     
     #filter based on distance to dendrite
     #logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
-    
+    #logger.info(f"  filtered table before dist = {len(filtered_table)}. and distance = {dist}")
     filtered_table = filtered_table[(filtered_table['dist_to_dendrite'] < dist)] 
+    #logger.info(f"  filtered table after dist = {len(filtered_table)}. ")
+    
+    #update label numbers based on offset
+    filtered_table['label'] += max_label
+    
+    #update to included dendrite_id
+    filtered_table.insert(4, 'dendrite_id', dendrite)
+    
     
     #create vol um measurement
     filtered_table.insert(5, 'spine_vol_um3', filtered_table['area'] * (settings.input_resXY*settings.input_resXY*settings.input_resZ))
     filtered_table.rename(columns={'area': 'spine_vol'}, inplace=True)
     
     #create dist um cols
-    filtered_table.insert(9, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY*settings.input_resXY))
+    filtered_table.insert(9, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY))
     
-    filtered_table.insert(11, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY*settings.input_resXY))
+    filtered_table.insert(11, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY))
     
+    #logger.info(f"  filtered table before image filter = {len(filtered_table)}. ")
+    #logger.info(f"  image labels before filter = {np.max(labels)}.")
+    labels[labels > 0] += max_label
+    labels = create_filtered_labels_image(labels, filtered_table, logger)
+    #logger.info(f"  image labels after filter = {np.max(labels)}.")
     
-    labels = create_filtered_labels_image(labels, filtered_table)
+   
 
     logger.info(f" After filtering {len(filtered_table)} spines remain from total of {len(main_table)}")
 
@@ -1008,10 +1067,11 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
 
     # Generate summary
     summary_stats = spine_reduced.mean().to_dict()
+    summary_stats['dendrite_id'] = summary_stats.pop('dendrite_id')  
     summary_stats['avg_spine_vol'] = summary_stats.pop('spine_vol')  # Rename 'area' to 'Volume'
     summary_stats['avg_spine_vol_um3'] = summary_stats.pop('spine_vol_um3')  # Rename 'area' to 'Volume'
-    summary_stats['avg_dist_to_dendrite'] = summary_stats.pop('dist_to_dendrite') 
     summary_stats['avg_spine_length'] = summary_stats.pop('spine_length') 
+    summary_stats['avg_dist_to_dendrite'] = summary_stats.pop('dist_to_dendrite') 
     summary_stats['avg_dist_to_dendrite_um'] = summary_stats.pop('dist_to_dendrite_um') 
     summary_stats['avg_spine_length_um'] = summary_stats.pop('spine_length_um') 
     
@@ -1033,13 +1093,13 @@ def spine_measurements(image, labels, neuron_ch, dendrite_distance, sizes, dist,
     summary_df.insert(0, 'Filename', filename)  # Insert a column at the beginning
 
 
-    filtered_table.to_csv(locations.tables + 'Detected_spines_'+filename+'.csv',index=False) 
+
   
     return filtered_table, summary_df, labels
 
 
 
-def create_filtered_labels_image(labels, filtered_table):
+def create_filtered_labels_image(labels, filtered_table, logger):
     """
     Create a new labels image using a filtered regionprops table, more efficiently.
 
@@ -1050,12 +1110,19 @@ def create_filtered_labels_image(labels, filtered_table):
     Returns:
         numpy.ndarray: Filtered labels image.
     """
+
+    filtered_labels_list = filtered_table['label'].astype(labels.dtype).values
+    
+    #logger.info(f" {np.max(labels)} , {len(filtered_labels_list)}")
+    #logger.info(filtered_labels_list)
     # Create a mask that retains only the labels present in the filtered_table
-    mask = np.isin(labels, filtered_table['label'].values)
+    mask = np.isin(labels, filtered_labels_list)
+    
 
     # Create the filtered labels image by multiplying the mask with the original labels
-    filtered_labels = labels * mask
-
+    filtered_labels = np.where(mask, labels, 0)
+    
+    #logger.info(np.max(filtered_labels))
     return filtered_labels
 
 def create_filtered_and_unfiltered_spine_arrays_cupy(image, labels_filtered, table, volume_size, settings, locations, file):

@@ -6,8 +6,8 @@ Batch Processing Script
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.4'
-__date__      = "19 November, 2023"
+__version__   = '0.9.5'
+__date__      = "6 December, 2023"
 __author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -104,6 +104,7 @@ for data_dir in data_dirs:
                 settings.Track = True
                 settings.reg_method = "Elastic" #or "Elastic"
                 settings.erode_shape = (0.5,2,2)
+                settings.min_dendrite_vol = 15
                 
                 settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/spinepipe/Models/Dataset022_SpinesDendrites/"
                 settings.seg_model = ("nnUnet","")

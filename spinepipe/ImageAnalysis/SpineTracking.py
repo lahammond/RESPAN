@@ -6,8 +6,8 @@ Image Analysis tools and functions for spine analysis
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.4'
-__date__      = "19 November, 2023"
+__version__   = '0.9.5'
+__date__      = "6 December, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -36,6 +36,8 @@ from skimage.measure import label
 from skimage.measure import regionprops
 from scipy.spatial import distance
 
+from scipy.ndimage import gaussian_filter
+from skimage import img_as_float
 
 """    
 
@@ -184,7 +186,7 @@ def serial_registration_of_np_images_and_labels(settings, locations, logger):
     ants_direction = ([[-1.,  0.,  0.], [ 0., -1.,  0.], [ 0.,  0.,  1.]])
    
 
-    #registered_enhanced = []
+    registered_enhanced = []
     registered_images = []
     registered_labels = []
     
@@ -206,22 +208,25 @@ def serial_registration_of_np_images_and_labels(settings, locations, logger):
     #swap axes for ants and pad if necessary
     fixed_image = np.swapaxes(np.pad(fixed_image, pad_width), 0, 2)
     fixed_label = np.swapaxes(np.pad(fixed_label, pad_width), 0, 2)
-       
+    fixed_enhanced = np.copy(fixed_image)
+    
+    #Perform enhancement
+    fixed_enhanced = unsharp_mask(fixed_enhanced, radius=5, amount = 1.5)
 
     
     #rescale if necessary
     if fixed_image.shape[2] < minSlices:
-        #fixed_enhanced = ants.resample_image(fixed_enhanced, (1, 1, rescale), use_voxels=False, interp_type=4)
+        fixed_enhanced = ants.resample_image(fixed_enhanced, (1, 1, rescale), use_voxels=False, interp_type=4)
         fixed_image = ants.resample_image(fixed_image, (1, 1, rescale), use_voxels=False, interp_type=4)
         fixed_label = ants.resample_image(fixed_label, (1, 1, rescale), use_voxels=False, interp_type=0)
     
     #convert to ants
-    #fixed_enhanced = ants.from_numpy(fixed_enhanced.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+    fixed_enhanced = ants.from_numpy(fixed_enhanced.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
     fixed_image = ants.from_numpy(fixed_image.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
     fixed_label = ants.from_numpy(fixed_label.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
 
     #append to image list
-    #registered_enhanced.append(fixed_enhanced)
+    registered_enhanced.append(fixed_enhanced)
     registered_images.append(fixed_image)
     registered_labels.append(fixed_label)
     
@@ -230,15 +235,18 @@ def serial_registration_of_np_images_and_labels(settings, locations, logger):
 
     for i in range(1, len(images_list)):
         logger.info(f" Registering images {i} and {i+1} of {len(images_list)}.")
-        #moving_enhanced = np.swapaxes(imread(enhanced_list[i]), 0, 2)
+        
         moving_image = np.swapaxes(imread(images_list[i]), 0, 2)
         moving_label = np.swapaxes(imread(labels_list[i]), 0, 2)
         
         #Pad
-        #moving_enhanced = np.pad(moving_enhanced, pad_width)
         moving_image = np.pad(moving_image, pad_width)
         moving_label = np.pad(moving_label, pad_width)  
         
+        moving_enhanced = np.copy(moving_image)
+        
+        #Perform enhancement
+        moving_enhanced = unsharp_mask(moving_enhanced, radius=5, amount = 1.5)
         
         #mask testing
         #mask2 = moving_label > 0
@@ -246,13 +254,13 @@ def serial_registration_of_np_images_and_labels(settings, locations, logger):
         
         #rescale if necessary
         if moving_image.shape[2] < minSlices:
-            #moving_enhanced = ants.resample_image(moving_enhanced, (1, 1, rescale), use_voxels=False, interp_type=4)
+            moving_enhanced = ants.resample_image(moving_enhanced, (1, 1, rescale), use_voxels=False, interp_type=4)
             moving_image = ants.resample_image(moving_image, (1, 1, rescale), use_voxels=False, interp_type=4)
             moving_label = ants.resample_image(moving_label, (1, 1, rescale), use_voxels=False, interp_type=0)
         
         #Convert to ants
         #convert to ants
-        #moving_enhanced = ants.from_numpy(moving_enhanced.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
+        moving_enhanced = ants.from_numpy(moving_enhanced.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
         moving_image = ants.from_numpy(moving_image.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
         moving_label = ants.from_numpy(moving_label.astype("float32"), origin=ants_origin, spacing=ants_spacing, direction=ants_direction)
         
@@ -825,3 +833,35 @@ def adaptive_equalize(image):
 def match_histogram(source_image, reference_image):
     matched_image = exposure.match_histograms(source_image, reference_image)
     return matched_image
+
+def unsharp_mask(image, radius=5, amount=1.5):
+    """
+    Apply unsharp mask to an image and scale it to full range of intensities.
+
+    Parameters:
+    - image: Input image (numpy array).
+    - radius: Gaussian blur radius.
+    - amount: Strength of the mask.
+
+    Returns:
+    - Unsharp masked image scaled to full range of intensities.
+    """
+    # Convert the image to float
+    image = img_as_float(image)
+
+    # Apply Gaussian blur to the image
+    blurred = gaussian_filter(image, sigma=radius)
+
+    # Calculate the unsharp mask
+    mask = image - blurred
+
+    # Apply the unsharp mask to the original image
+    sharp = np.clip(image + amount * mask, 0, 1)
+
+    # Rescale the image to the full range of intensities
+    min_val = np.min(sharp)
+    max_val = np.max(sharp)
+    if max_val - min_val > 0:  # Avoid division by zero
+        sharp = (sharp - min_val) / (max_val - min_val)
+    
+    return sharp
