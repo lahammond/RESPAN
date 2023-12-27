@@ -1025,14 +1025,17 @@ def spine_measurements(image, labels, dendrite, max_label, neuron_ch, dendrite_d
 
     #filter based on volume
     #logger.info(f"  filtered table before area = {len(main_table)}")
+    spinebefore = len(main_table)
     filtered_table = main_table[(main_table['area'] > volume_min) & (main_table['area'] < volume_max) ] 
+    logger.info(f"  Spines before volume filter = {spinebefore}. After volume filter = {len(filtered_table)}. ")
     #logger.info(f"  filtered table after area = {len(filtered_table)}")
     
     #filter based on distance to dendrite
+    spinebefore = len(filtered_table)
     #logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
     #logger.info(f"  filtered table before dist = {len(filtered_table)}. and distance = {dist}")
     filtered_table = filtered_table[(filtered_table['dist_to_dendrite'] < dist)] 
-    #logger.info(f"  filtered table after dist = {len(filtered_table)}. ")
+    logger.info(f"  Spines before distance filter = {spinebefore}. After distance filter = {len(filtered_table)}. ")
     
     #update label numbers based on offset
     filtered_table['label'] += max_label
