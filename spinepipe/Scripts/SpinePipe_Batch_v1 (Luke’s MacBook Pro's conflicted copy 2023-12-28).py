@@ -6,8 +6,8 @@ Batch Processing Script
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.7'
-__date__      = "2 February, 2024"
+__version__   = '0.9.5'
+__date__      = "6 December, 2023"
 __author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -48,7 +48,9 @@ main.check_gpu()
 
 #Dataset Directories
 
-data_dirs = ["D:/Project_Data/SpineAnalysis/Testing/Error/",
+data_dirs = ["D:/Project_Data/SpineAnalysis/1_Spine_Tracking_Datasets/Animal3/",
+             "D:/Project_Data/SpineAnalysis/1_Spine_Tracking_Datasets/Animal2/",
+             "D:/Project_Data/SpineAnalysis/1_Spine_Tracking_Datasets/Animal1/",
              ] #,
             # "D:/Project_Data/SpineAnalysis/Testing/FastTest2"]
             #"D:/Project_Data/SpineAnalysis/1_Spine_Tracking_Datasets/Animal1/Segment1/"
@@ -117,7 +119,7 @@ for data_dir in data_dirs:
             
                 #Processing
             
-                log = imgan.restore_and_segment(settings, locations, logger)
+                log = imgan.restore_and_segment(subfolder_path, settings, locations, logger)
                 
                 imgan.analyze_spines(settings, locations, log, logger)
                 

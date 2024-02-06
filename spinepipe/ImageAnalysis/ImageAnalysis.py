@@ -6,14 +6,12 @@ Image Analysis tools and functions for spine analysis
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.5'
-__date__      = "6 December, 2023"
+__version__   = '0.9.7'
+__date__      = "2 February, 2024"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'
-
-
 
 import os
 import numpy as np
@@ -28,7 +26,7 @@ import re
 import shutil
 from pathlib import Path
 
-#import spinepipe.Main.Main as main
+import spinepipe.Main.Main as main
 #import spinepipe.Main.Timer as timer
 
 #import segmentation_models as sm
@@ -58,6 +56,10 @@ from skimage.transform import resize
 from skimage.measure import label
 from scipy import ndimage
 
+from csbdeep.utils import download_and_extract_zip_file, plot_some, axes_dict, plot_history, Path, download_and_extract_zip_file, normalize
+from csbdeep.data import RawData, create_patches 
+from csbdeep.io import load_training_data, save_tiff_imagej_compatible
+from csbdeep.models import Config, CARE
 
 
 import gc
@@ -73,10 +75,10 @@ import gc
 # Main Processing Functions
 ##############################################################################
 
-def restore_and_segment(inputdir, settings, locations, logger):
+def restore_and_segment(settings, locations, logger):
     
-    if settings.neuron_restore == True:
-        restore_neuron(locations.input_dir, settings, locations, logger)
+    if settings.image_restore == True:
+        restore_image(locations.input_dir, settings, locations, logger)
         #include options here for alternative unets if required
         log = nnunet_create_labels(locations.restored, settings, locations, logger)
     else:
@@ -86,68 +88,70 @@ def restore_and_segment(inputdir, settings, locations, logger):
     return log
     
     
-def restore_neuron (inputdir, settings, locations, logger):    
+def restore_image (inputdir, settings, locations, logger):    
+    logger.info("-----------------------------------------------------------------------------------------------------")
     logger.info("Restoring neuron images...")
         
     files = [file_i for file_i in os.listdir(inputdir) if file_i.endswith('.tif')]
     files = sorted(files)
+    
+    
 
     for file in range(len(files)):
-        logger.info(f' Restoring image {files[file]} \n')
+        logger.info(f' Restoring image {files[file]} ')
 
-        image = imread(inputdir + file)
-        logger.info(f"Raw data has shape {image.shape}")
+        image = imread(inputdir + files[file])
+        logger.info(f"  Raw data has shape {image.shape}")
 
         image = check_image_shape(image, logger)
-        neuron = image[:,settings.neuron_channel-1,:,:]
         
-    
-        #load restoration model
-        logger.info(f"Restoration model = {locations.rest_model_path}")
-        """
-        if settings.neuron_rest_type[0] == 'care':
-            if os.path.isdir(neuron_rest_model_path) is False:
-                raise RuntimeError(neuron_rest_model_path, "not found, check settings and model directory")
-            rest_model = CARE(config=None, name=neuron_rest_model_path)
-            neuron = image[:,settings.neuron_channel-1,:,:]
-            logger.info(f"Section image shape: {neuron.shape}")
-            #apply restoration model to channel
-            #logger.info(f"Restoring image for channel {channel}")
-            
-            restored = np.empty((image.shape[0], image.shape[1], image.shape[2]), dtype=np.uint16)
-            
-            start_time = time.time()
-            for slice_idx in range(image.shape[0]):
-                loop_start_time = time.time()
+        restored = np.empty((image.shape[0], image.shape[1], image.shape[2], image.shape[3]), dtype=np.uint16)
+        
+        for channel in range(image.shape[1]):
+            restore_on = getattr(settings, f'c{channel+1}_restore', None)
+            rest_model_path = getattr(settings, f'c{channel+1}_rest_model_path', None)
+            rest_type = getattr(settings, f'c{channel+1}_rest_type', None)
+            if restore_on == True and rest_model_path != None:
+                logger.info(f"  Restoring channel {channel+1}")
+                logger.info(f"  Restoration model = {rest_model_path}\n  ---")
                 
-                logger.info(f"\rRestoring slice {slice_idx+1} of {image.shape[0]}") #, end="\r", flush=True)
-                
-                slice_img = image[slice_idx]
-                with main.HiddenPrints():
+                channel_image = image[:,channel,:,:]
+                  
+        
+                if rest_type[0] == 'care':
+                    if os.path.isdir(rest_model_path) is False:
+                        raise RuntimeError(rest_model_path, "not found, check settings and model directory")
+                    rest_model = CARE(config=None, name=rest_model_path)
                     
-    
-                    #restore image
-                    restoredslice = rest_model.predict(slice_img, axes='YX', n_tiles=settings.tiles_for_prediction)
-    
-                    #convert to 16bit
-                    restoredslice = restoredslice.astype(np.uint16)
-                    #remove low intensities that are artifacts 
-                    #as restored images have varying backgrounds due to high variability in samples. Detect background with median, then add the cutoff
-                    #cutoff = np.median(restored) + rest_type[1]
-                    #restored[restored < cutoff] = 0
-                    background = restoration.rolling_ball(restoredslice, radius=5)
-                    restoredslice = restoredslice - background
-                    restored[slice_idx] = restoredslice
-                    
-                    loop_end_time = time.time()
-                    loop_duration = loop_end_time - loop_start_time
-                    total_elapsed_time = loop_end_time - start_time
-                    avg_time_per_loop = total_elapsed_time / (slice_idx+1)
-                    estimated_total_time = avg_time_per_loop * image.shape[0]
+                    #restored = np.empty((channel_image.shape[0], channel_image.shape[1], channel_image.shape[2]), dtype=np.uint16)
 
-                    #logger.info(f"{loop_duration:.2f} seconds. Estimated total time: {estimated_total_time:.2f} minutes")
-                    """
-            #logger.info("Complete.\n")
+                    with main.HiddenPrints():
+                        
+                        #rescale if necessary
+                        #tiles_for_prediction = tuple(x * trunc(scale) for x in tiles_for_prediction)
+        
+                        #restore image
+                        restored_channel = rest_model.predict(channel_image, axes='ZYX', n_tiles=settings.tiles_for_prediction)
+        
+                        #convert to 16bit
+                        restored_channel= restored_channel.astype(np.uint16)
+                        #remove low intensities that are artifacts 
+                        #as restored images have varying backgrounds due to high variability in samples. Detect background with median, then add the cutoff
+                        #cutoff = np.median(restored) + rest_type[1]
+                        #restored[restored < cutoff] = 0
+                        #background = restoration.rolling_ball(restoredslice, radius=5)
+                        #restoredslice = restoredslice - background
+                        #restored[slice_idx] = restoredslice
+                        restored[:,channel, :, :] = restored_channel
+            
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if settings.validation_format == "tif":
+                tifffile.imwrite(locations.restored+ files[file], restored, imagej=True, photometric='minisblack',
+                        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX', 'mode': 'composite'},
+                        resolution=(settings.input_resXY, settings.input_resXY))
+                        
+    logger.info("Restoration complete.\n\n-----------------------------------------------------------------------------------------------------")
 def check_image_shape(image,logger):
     if len(image.shape) > 3:
         #Multichannel input format variability
@@ -164,193 +168,208 @@ def check_image_shape(image,logger):
             
 
 def nnunet_create_labels(inputdir, settings, locations, logger):
-    logger.info(f"\nDetecting spines and dendrites...")
+    logger.info(f"Detecting spines and dendrites...")
     settings.shape_error = False
     settings.rescale_req = False
     
     #check if rescaling required and create scaling factors
-    if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
+    if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY:
         logger.info(f" Images will be rescaled to match network.")
         
         settings.rescale_req = True
         #z in / z desired, y in / desired ...
-        settings.scaling_factors = (settings.input_resZ/settings.neuron_seg_model_res[2],
-                          settings.input_resXY/settings.neuron_seg_model_res[1], 
-                          settings.input_resXY/settings.neuron_seg_model_res[0])
+        settings.scaling_factors = (settings.input_resZ/settings.model_resZ,
+                                    settings.input_resXY/settings.model_resXY,
+                                    settings.input_resXY/settings.model_resXY)
         #settings.inverse_scaling_factors = tuple(1/np.array(settings.scaling_factors))
         
-        logger.info(f" Scaling factors: Z = {settings.scaling_factors[0]} Y = {settings.scaling_factors[1]} X = {settings.scaling_factors[2]} ") 
+        logger.info(f" Scaling factors: Z = {settings.scaling_factors[0]} Y = {settings.scaling_factors[1]} X = {settings.scaling_factors[2]} ")
     
     #data can be raw data OR restored data so check channels
+    
     files = [file_i
-             for file_i in os.listdir(inputdir)
+             for file_i in os.listdir(locations.input_dir)
              if file_i.endswith('.tif')]
     files = sorted(files)
-        
-    #Prepare Raw data for nnUnet
-    
-    # Initialize reference to None - if using histogram matching
-    logger.info(f" Histogram Matching is set to = {settings.HistMatch}")
-    reference_image = None
+
+    label_files = [file_i
+                   for file_i in os.listdir(locations.labels)
+                   if file_i.endswith('.tif')]
     
     #create empty arrays to capture dims and padding info
     settings.original_shape = [None] * len(files)
     settings.padding_req = np.zeros(len(files))
     
-    for file in range(len(files)):
-        logger.info(f" Preparing image {file+1} of {len(files)} - {files[file]}")
+    if len(files) == len(label_files):
+        logger.info(f" *Spines and dendrites already detected. Delete \Validation_Data\Segmentation_Labels if you wish to regenerate.")
+        stdout = None
+        settings.prev_labels = True
         
-        image = imread(inputdir + files[file])
-        logger.info(f"  Raw data has shape: {image.shape}")
+    
+    else:
         
-        image = check_image_shape(image, logger)
+        #Prepare Raw data for nnUnet
         
-        neuron = image[:,settings.neuron_channel-1,:,:]
-        
-
-        
-        # rescale if required by model        
-        if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
-            settings.original_shape[file] = neuron.shape
-            #new_shape = (int(neuron.shape[0] * settings.scaling_factors[0]), neuron.shape[1] * settings.scaling_factors[1]), neuron.shape[2] * settings.scaling_factors[2]))
-            new_shape = tuple(int(dim * factor) for dim, factor in zip(neuron.shape, settings.scaling_factors))
-            neuron = resize(neuron, new_shape, mode='constant', preserve_range=True, anti_aliasing=True)
-            logger.info(f"  Data rescaled for labeling has shape: {neuron.shape}")
-
-
-        if neuron.shape[0] < 5:
-            #settings.shape_error = True
-            #logger.info(f"  !! Insufficient Z slices - please ensure 5 or more slices before processing.")
-            #logger.info(f"  File has been moved to \\Not_processed and excluded from processing.")
-            #if not os.path.isdir(inputdir+"Not_processed/"):
-            #    os.makedirs(inputdir+"Not_processed/")
-            #os.rename(inputdir+files[file], inputdir+"Not_processed/"+files[file])
-            
-            
-            #Padding and flag this file as padded for unpadding later
-            # Pad the array
-            settings.padding_req[file] = 1
-            neuron = np.pad(neuron, pad_width=((2, 2), (0, 0), (0, 0)), mode='constant', constant_values=0) 
-            logger.info(f"  Too few Z-slices, padding to allow analysis.")
-                
-        if settings.HistMatch == True:
-            # If reference_image is None, it's the first image.
-            if reference_image is None:
-                #neuron = contrast_stretch(neuron, pmin=0, pmax=100)
-                reference_image = neuron
-            else:
-               # Match histogram of current image to the reference image
-               neuron = exposure.match_histograms(neuron, reference_image)    
-            
-        #logger.info(f" ")
-        #save neuron as a tif file in nnUnet_input - if file doesn't end with 0000 add that at the end
-        name, ext = os.path.splitext(files[file])
-
-        if not name.endswith("0000"):
-            name += "_0000"
-
-        new_filename = name + ext
-        
-        filepath = locations.nnUnet_input+new_filename
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            tifffile.imwrite(filepath, neuron.astype(np.uint16), imagej=True, photometric='minisblack',
-                    metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
-                    resolution=(settings.input_resXY, settings.input_resXY))
-
-            
-    #Run nnUnet over prepared files
-    #initialize_nnUnet(settings)
-    
-    # split the path into subdirectories
-    subdirectories = os.path.normpath(settings.neuron_seg_model_path).split(os.sep)
-    last_subdirectory = subdirectories[-1]
-    # find all three digit sequences in the last subdirectory
-    matches = re.findall(r'\d{3}', last_subdirectory)
-    # If there's a match, assign it to a variable
-    dataset_id = matches[0] if matches else None
-
-    
-    logger.info("\nPerforming spine and dendrite detection on GPU...")
-    
-    ##uncomment if issues with nnUnet
-    #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
-    
-    stdout, cmd = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, 
-                                locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings, logger)
-    
-    #logger.info(cmd)
-    
-    ##uncomment if issues with nnUnet
-    #result = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, locations,settings)
-    
-    '''
-    # Add environment to the system path
-    #os.environ["PATH"] = settings.nnUnet_env_path + os.pathsep + os.environ["PATH"]
-
-    #python = settings.nnUnet_env_path+"/python.exe"
-
-    #result = subprocess.run(['nnUNetv2_predict', '-i', locations.nnUnet_input, '-o', locations.labels, '-d', dataset_id, '-c', settings.nnUnet_type, '--save_probabilities', '-f', 'all'], capture_output=True, text=True)
-    #command = 'nnUNetv2_predict -i ' + locations.nnUnet_input + ' -o ' + locations.labels + ' -d ' + dataset_id + ' -c ' + settings.nnUnet_type + ' --save_probabilities -f all']
-    
-    #command = [python, "-m", "nnUNetv2_predict", "-i", locations.nnUnet_input, "-o", locations.labels, "-d", dataset_id, "-c", settings.nnUnet_type, "--save_probabilities", "-f", "all"]
-    #result = run_command_in_conda_env(command, settings.env ,settings.python)
-    #result = subprocess.run(command, capture_output=True, text=True)
-
-    #logger.info(result.stdout)  # This is the standard output of the command.
-    #logger.info(result.stderr)  # This is the error output of the command. 
-    '''
-    #logger.info(stdout)
-    
-    #delete nnunet input folder and files
-    if settings.save_intermediate_data == False and settings.Track == False:
-        if os.path.exists(locations.nnUnet_input):
-            shutil.rmtree(locations.nnUnet_input)
-    
-    #Clean up label folder
-
-    if os.path.exists(locations.labels):
-        # iterate over all files in the directory
-        for filename in os.listdir(locations.labels):
-            # check if the file is not a .tif file
-            if not filename.endswith('.tif'):
-                # construct full file path
-                file_path = os.path.join(locations.labels, filename)
-                # remove the file
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-    
-    
-    #if tracking over time then we want unpad and match how the labels will appear
-    if settings.Track == True:
-        
-        files = [file_i
-                 for file_i in os.listdir(locations.nnUnet_input)
-                 if file_i.endswith('.tif')]
-        files = sorted(files)
-        
+        # Initialize reference to None - if using histogram matching
+        logger.info(f" Histogram Matching is set to = {settings.HistMatch}")
+        reference_image = None
+        settings.prev_labels = False
+       
         for file in range(len(files)):
-            if file == 0: logger.info(' Unpadding and rescaling neuron channel for registration and time tracking...')
+            logger.info(f" Preparing image {file+1} of {len(files)} - {files[file]}")
             
-            image = imread(locations.nnUnet_input + files[file])
-      
-            #Unpad if padded
-            if settings.padding_req[file] == 1:
-                image = image[2:-2, :, :]
+            image = imread(inputdir + files[file])
+            logger.info(f"  Raw data has shape: {image.shape}")
             
+            image = check_image_shape(image, logger)
             
-            # rescale labels back up if required      
-            if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
-                #logger.info(f"orignal settings shape: {settings.original_shape[file]}")
-                image = resize(image, settings.original_shape[file], order=0, mode='constant', preserve_range=True, anti_aliasing=None)
-                #logger.info(f"image resized: {labels.shape}")
+            neuron = image[:,settings.neuron_channel-1,:,:]
+            
     
-                tifffile.imwrite(locations.nnUnet_input + files[file], image.astype(np.uint8), imagej=True, photometric='minisblack',
+            
+            # rescale if required by model        
+            if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY:
+                settings.original_shape[file] = neuron.shape
+                #new_shape = (int(neuron.shape[0] * settings.scaling_factors[0]), neuron.shape[1] * settings.scaling_factors[1]), neuron.shape[2] * settings.scaling_factors[2]))
+                new_shape = tuple(int(dim * factor) for dim, factor in zip(neuron.shape, settings.scaling_factors))
+                neuron = resize(neuron, new_shape, mode='constant', preserve_range=True, anti_aliasing=True)
+                logger.info(f"  Data rescaled for labeling has shape: {neuron.shape}")
+    
+    
+            if neuron.shape[0] < 5:
+                #settings.shape_error = True
+                #logger.info(f"  !! Insufficient Z slices - please ensure 5 or more slices before processing.")
+                #logger.info(f"  File has been moved to \\Not_processed and excluded from processing.")
+                #if not os.path.isdir(inputdir+"Not_processed/"):
+                #    os.makedirs(inputdir+"Not_processed/")
+                #os.rename(inputdir+files[file], inputdir+"Not_processed/"+files[file])
+                
+                
+                #Padding and flag this file as padded for unpadding later
+                # Pad the array
+                settings.padding_req[file] = 1
+                neuron = np.pad(neuron, pad_width=((2, 2), (0, 0), (0, 0)), mode='constant', constant_values=0) 
+                logger.info(f"  Too few Z-slices, padding to allow analysis.")
+                    
+            if settings.HistMatch == True:
+                # If reference_image is None, it's the first image.
+                if reference_image is None:
+                    #neuron = contrast_stretch(neuron, pmin=0, pmax=100)
+                    reference_image = neuron
+                else:
+                   # Match histogram of current image to the reference image
+                   neuron = exposure.match_histograms(neuron, reference_image)    
+                
+            #logger.info(f" ")
+            #save neuron as a tif file in nnUnet_input - if file doesn't end with 0000 add that at the end
+            name, ext = os.path.splitext(files[file])
+    
+            if not name.endswith("0000"):
+                name += "_0000"
+    
+            new_filename = name + ext
+            
+            filepath = locations.nnUnet_input+new_filename
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                tifffile.imwrite(filepath, neuron.astype(np.uint16), imagej=True, photometric='minisblack',
                         metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
                         resolution=(settings.input_resXY, settings.input_resXY))
-                
     
+                
+        #Run nnUnet over prepared files
+        #initialize_nnUnet(settings)
+        
+        # split the path into subdirectories
+        subdirectories = os.path.normpath(settings.neuron_seg_model_path).split(os.sep)
+        last_subdirectory = subdirectories[-1]
+        # find all three digit sequences in the last subdirectory
+        matches = re.findall(r'\d{3}', last_subdirectory)
+        # If there's a match, assign it to a variable
+        dataset_id = matches[0] if matches else None
+    
+        
+        logger.info("\nPerforming spine and dendrite detection on GPU...")
+        
+        ##uncomment if issues with nnUnet
+        #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
+        
+        stdout, cmd = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, 
+                                    locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings, logger)
+        
+        #logger.info(cmd)
+        
+        ##uncomment if issues with nnUnet
+        #result = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, locations,settings)
+        
+        '''
+        # Add environment to the system path
+        #os.environ["PATH"] = settings.nnUnet_env_path + os.pathsep + os.environ["PATH"]
+    
+        #python = settings.nnUnet_env_path+"/python.exe"
+    
+        #result = subprocess.run(['nnUNetv2_predict', '-i', locations.nnUnet_input, '-o', locations.labels, '-d', dataset_id, '-c', settings.nnUnet_type, '--save_probabilities', '-f', 'all'], capture_output=True, text=True)
+        #command = 'nnUNetv2_predict -i ' + locations.nnUnet_input + ' -o ' + locations.labels + ' -d ' + dataset_id + ' -c ' + settings.nnUnet_type + ' --save_probabilities -f all']
+        
+        #command = [python, "-m", "nnUNetv2_predict", "-i", locations.nnUnet_input, "-o", locations.labels, "-d", dataset_id, "-c", settings.nnUnet_type, "--save_probabilities", "-f", "all"]
+        #result = run_command_in_conda_env(command, settings.env ,settings.python)
+        #result = subprocess.run(command, capture_output=True, text=True)
+    
+        #logger.info(result.stdout)  # This is the standard output of the command.
+        #logger.info(result.stderr)  # This is the error output of the command. 
+        '''
+        #logger.info(stdout)
+        
+        #delete nnunet input folder and files
+        if settings.save_intermediate_data == False and settings.Track == False:
+            if os.path.exists(locations.nnUnet_input):
+                shutil.rmtree(locations.nnUnet_input)
+        
+        #Clean up label folder
+    
+        if os.path.exists(locations.labels):
+            # iterate over all files in the directory
+            for filename in os.listdir(locations.labels):
+                # check if the file is not a .tif file
+                if not filename.endswith('.tif'):
+                    # construct full file path
+                    file_path = os.path.join(locations.labels, filename)
+                    # remove the file
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+        
+        
+        #if tracking over time then we want unpad and match how the labels will appear
+        if settings.Track == True:
+            
+            files = [file_i
+                     for file_i in os.listdir(locations.nnUnet_input)
+                     if file_i.endswith('.tif')]
+            files = sorted(files)
+            
+            for file in range(len(files)):
+                if file == 0: logger.info(' Unpadding and rescaling neuron channel for registration and time tracking...')
+                
+                image = imread(locations.nnUnet_input + files[file])
+          
+                #Unpad if padded
+                if settings.padding_req[file] == 1:
+                    image = image[2:-2, :, :]
+                
+                
+                # rescale labels back up if required      
+                if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY:
+                    #logger.info(f"orignal settings shape: {settings.original_shape[file]}")
+                    image = resize(image, settings.original_shape[file], order=0, mode='constant', preserve_range=True, anti_aliasing=None)
+                    #logger.info(f"image resized: {labels.shape}")
+        
+                    tifffile.imwrite(locations.nnUnet_input + files[file], image.astype(np.uint8), imagej=True, photometric='minisblack',
+                            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
+                            resolution=(settings.input_resXY, settings.input_resXY))
+                    
+        
     #logger.info("Segmentation complete.\n")
+    logger.info(f"\n-----------------------------------------------------------------------------------------------------")
     return stdout
 
 def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id, nnunet_type, settings, logger):
@@ -401,21 +420,22 @@ def run_nnunet_predict_bat(path, env, input_dir, output_dir, dataset_id, nnunet_
 
 def run_command_in_conda_env(command, env, python):
     #command = f"{python} activate {env} && {command}"
-    #command = 
+    #
     result = subprocess.run(command, capture_output=True, text=True, shell=True)
     return result
 
 def initialize_nnUnet(settings, logger):
-    os.environ['nnUNet_raw'] = settings.nnUnet_raw
-    os.environ['nnUNet_preprocessed'] = settings.nnUnet_preprocessed
+    #not worrying about setting raw and processed, as not needed and would rquire additional params for user/settings file
+    #os.environ['nnUNet_raw'] = settings.nnUnet_raw
+    #os.environ['nnUNet_preprocessed'] = settings.nnUnet_preprocessed
     nnUnet_results = Path(settings.neuron_seg_model_path).parent
     nnUnet_results = str(nnUnet_results).replace("\\", "/")
     os.environ['nnUNet_results'] = nnUnet_results
-    
+
 
 
 def analyze_spines(settings, locations, log, logger):
-    logger.info("\nAnalyzing spines...\n")
+    logger.info("Analyzing spines...")
     #spines = 1
     #dendrites = 2
     #soma = 3
@@ -424,28 +444,29 @@ def analyze_spines(settings, locations, log, logger):
              for file_i in os.listdir(locations.input_dir)
              if file_i.endswith('.tif')]
     files = sorted(files)
-    
+
     label_files = [file_i
-             for file_i in os.listdir(locations.labels)
-             if file_i.endswith('.tif')]
+                   for file_i in os.listdir(locations.labels)
+                   if file_i.endswith('.tif')]
+
     label_files = sorted(label_files)
-    
+
     if len(files) != len(label_files):
         logger.info(log)
-        raise RuntimeError("Lists are not of equal length.")
+        raise RuntimeError("Number of raw and label images are not the same - check data.")
     
     spine_summary = pd.DataFrame()
     
     for file in range(len(files)):
-        logger.info(f' Analyzing image {file+1} of {len(files)} \n Raw Image: {files[file]} & Label Image: {label_files[file]}')
+        logger.info(f' Analyzing image {file+1} of {len(files)} \n  Raw Image: {files[file]} & Label Image: {label_files[file]}')
         
         image = imread(locations.input_dir + files[file])
-        labels = imread(locations.labels + label_files[file])
+        labels = imread(locations.labels + files[file]) # use original file name to ensure correct image regardless of sorting
         
-        logger.info(f" Raw shape: {image.shape} & Labels shape: {labels.shape}")
+        logger.info(f"  Raw shape: {image.shape} & Labels shape: {labels.shape}")
         
-        #Unpad if padded
-        if settings.padding_req[file] == 1:
+        #Unpad if padded # later update - these can be included in Unet processing stage to simplify!
+        if settings.padding_req[file] == 1 and settings.prev_labels == False:
             labels = labels[2:-2, :, :]
 
             #tifffile.imwrite(locations.labels + label_files[file], labels.astype(np.uint8), imagej=True, photometric='minisblack',
@@ -454,7 +475,7 @@ def analyze_spines(settings, locations, log, logger):
         
         
         # rescale labels back up if required      
-        if settings.input_resZ != settings.neuron_seg_model_res[2] or settings.input_resXY != settings.neuron_seg_model_res[1]:
+        if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY and settings.prev_labels == False:
             logger.info(f"orignal settings shape: {settings.original_shape[file]}")
             labels = resize(labels, settings.original_shape[file], order=0, mode='constant', preserve_range=True, anti_aliasing=None)
             logger.info(f"labels resized: {labels.shape}")
@@ -467,133 +488,234 @@ def analyze_spines(settings, locations, log, logger):
         
         image = check_image_shape(image, logger) 
         
-        neuron = image[:,settings.neuron_channel-1,:,:]
+        
+        if settings.analysis_method == "Dendrite Specific":
+            spine_and_dendrite_processing(image, labels, spine_summary, settings, locations, files[file], log, logger)
+        else:
+            spine_and_whole_neuron_processing(image, labels, spine_summary, settings, locations, files[file], log, logger)
+        
+        
+        if settings.shape_error == True:
+            logger.info(f"!!! One or more images moved to \\Not_Processed due to having\nless than 5 Z slices. Please modify these files before reprocessing.\n")
+        spine_summary.to_csv(locations.tables + 'Detected_spines_summary.csv',index=False) 
+        
 
-        
-        spines = (labels == 1)
-        all_dendrites = (labels == 2)
-        #soma = (image == 3).astype(np.uint8)
-        spines_orig = spines * 65535
-        
-        dendrite_labels = measure.label(all_dendrites)
-        
-        all_filtered_spines = np.zeros_like(spines)
-        all_skeletons = np.zeros_like(spines)
-        
-        all_filtered_spines_table = pd.DataFrame()
-        
-        min_dendrite_vol = round(settings.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
-        
-        for dendrite in range(1, np.max(dendrite_labels)+1):
-            logger.info(f" Detecting spines on dendrite {dendrite}...")
-            dendrite_mask = dendrite_labels == dendrite
-            
-            if np.sum(dendrite_mask) > min_dendrite_vol:
-                
-            
-                #Create Distance Map
     
-                dendrite_distance = ndimage.distance_transform_edt(np.invert(dendrite_mask)) #invert neuron mask to get outside distance  
-                dendrite_mask = dendrite_mask.astype(np.uint8)
-                skeleton = morphology.skeletonize_3d(dendrite_mask)
-                all_skeletons = skeleton + all_skeletons
-                #if settings.save_val_data == True:
-                #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
-                
-                #Create Neuron MIP for validation - include distance map too
-                #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
-                #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
-                
-               
-                
-                #Detection
-                
-                spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
-                
-                #tifffile.imwrite(locations.MIPs+"spines_"+str(dendrite)+files[file], spine_labels.astype(np.uint16), imagej=True, photometric='minisblack',
-                #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
+    logger.info("-----------------------------------------------------------------------------------------------------\n")
+    
+
+
+def spine_and_whole_neuron_processing(image, labels, spine_summary, settings, locations, filename, log, logger):
+    neuron = image[:,settings.neuron_channel-1,:,:]
+
+    
+    spines = (labels == 1)
+    dendrites = (labels == 2)
+
+    #fitler out small dendites
+    dendrite_labels, num_detected = ndimage.label(dendrites)
+    
+    
+    # Calculate volumes and filter
+    dend_vols = ndimage.sum_labels(dendrites, dendrite_labels, index=range(1, num_detected + 1))
+
+    large_dendrites = dend_vols >= settings.min_dendrite_vol
+
+    # Create new dendrite binary
+    dendrites = np.isin(dendrite_labels, np.nonzero(large_dendrites)[0] + 1).astype(bool)
+
+    
+    #soma = (image == 3).astype(np.uint8)
+    
+    
+    #Create Distance Map
+
+    dendrite_distance = ndimage.distance_transform_edt(np.invert(dendrites)) #invert neuron mask to get outside distance  
+    dendrites = dendrites.astype(np.uint8)
+    skeleton = morphology.skeletonize_3d(dendrites)
+    #if settings.save_val_data == True:
+    #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
+    
+    #Create Neuron MIP for validation - include distance map too
+    #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
+    #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
+
+    #Detection
+    logger.info(" Detecting spines...")
+    spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
+
+
+    #Measurements
+    spine_table, summary, spines_filtered = spine_measurementsV1(image, spine_labels, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
+                                                      #soma_mask, soma_distance, )
+    
+    # update summary with additional metrics
+    summary.insert(1, 'res_XY', settings.input_resXY)  
+    summary.insert(2, 'res_Z', settings.input_resZ)
+    dendrite_length = np.sum(skeleton == 1)
+    summary.insert(3, 'dendrite_length', dendrite_length)
+    dendrite_length_um = dendrite_length*settings.input_resXY
+    summary.insert(4, 'dendrite_length_um', dendrite_length_um)
+    dendrite_volume = np.sum(dendrites ==1)
+    summary.insert(5, 'dendrite_vol', dendrite_volume)
+    dendrite_volume_um3 = dendrite_volume*settings.input_resXY*settings.input_resXY*settings.input_resZ
+    summary.insert(6, 'dendrite_vol_um3', dendrite_volume_um3)
+    summary.insert(9, 'spines_per_um_length', summary['total_spines'][0]/dendrite_length_um)
+    summary.insert(10, 'spines_per_um3_vol', summary['total_spines'][0]/dendrite_volume_um3)
+                                                      
+    #append to summary
+    # Append to the overall summary DataFrame
+    spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
+    
+      
+    if len(spine_table) == 0:
+        logger.info(f"  *No spines were analyzed for this image.")
+        
+    else:
+      
+        neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+filename, 'float', settings)
+        
+     
+        #Extract MIPs for each spine
+        spine_MIPs, spine_slices, filtered_spine_MIPs, filtered_spine_slices= create_spine_arrays_in_blocks(image, spines_filtered, spine_table, settings.roi_volume_size, settings, locations, filename,  logger, settings.GPU_block_size)
+
+
+    logger.info(f" Image processing complete for file {filename}\n")
+    
+def spine_and_dendrite_processing(image, labels, spine_summary, settings, locations, filename, log, logger):       
+    neuron = image[:,settings.neuron_channel-1,:,:]
+
+    
+    spines = (labels == 1)
+    all_dendrites = (labels == 2)
+    #soma = (image == 3).astype(np.uint8)
+    spines_orig = spines * 65535
+    
+    dendrite_labels = measure.label(all_dendrites)
+    
+    all_filtered_spines = np.zeros_like(spines)
+    all_skeletons = np.zeros_like(spines)
+    
+    all_filtered_spines_table = pd.DataFrame()
+    
+    
+    for dendrite in range(1, np.max(dendrite_labels)+1):
+        logger.info(f"  Detecting spines on dendrite {dendrite}...")
+        dendrite_mask = dendrite_labels == dendrite
+        
+        if np.sum(dendrite_mask) > settings.min_dendrite_vol:
+            
+        
+            #Create Distance Map
+
+            dendrite_distance = ndimage.distance_transform_edt(np.invert(dendrite_mask)) #invert neuron mask to get outside distance  
+            dendrite_mask = dendrite_mask.astype(np.uint8)
+            skeleton = morphology.skeletonize_3d(dendrite_mask)
+            all_skeletons = skeleton + all_skeletons
+            #if settings.save_val_data == True:
+            #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
+            
+            #Create Neuron MIP for validation - include distance map too
+            #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
+            #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
+            
+           
+            
+            #Detection
+            
+            spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
+            
+            #tifffile.imwrite(locations.MIPs+"spines_"+str(dendrite)+files[file], spine_labels.astype(np.uint16), imagej=True, photometric='minisblack',
+            #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
+                    
+            #offset object counts to ensure unique ids 
+            max_label = np.max(all_filtered_spines)
+        
+            #logger.info(max_label)
+            #Measurements
+            spine_table, summary, spines_filtered = spine_measurementsV2(image, spine_labels, dendrite, max_label, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
+                                                              #soma_mask, soma_distance, )
+            
+            #tifffile.imwrite(locations.MIPs+"filtered_"+str(dendrite)+files[file], spines_filtered.astype(np.uint16), imagej=True, photometric='minisblack',
+            #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
+            
+            
+            #offset detected objects in image and add to all spines
+            
+            #logger.info(np.max(spines_filtered))
+            all_filtered_spines = all_filtered_spines + spines_filtered
+            #logger.info(f"{all_filtered_spines.shape}  {spines_filtered.shape}")
+
+            #remove detected spines from original spine image to prevent double counting
+            spines[spines_filtered > 0] = 0
                         
-                #offset object counts to ensure unique ids 
-                max_label = np.max(all_filtered_spines)
-                #logger.info(max_label)
-                #Measurements
-                spine_table, summary, spines_filtered = spine_measurements(image, spine_labels, dendrite, max_label, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, files[file], logger)
-                                                                  #soma_mask, soma_distance, )
-                
-                #tifffile.imwrite(locations.MIPs+"filtered_"+str(dendrite)+files[file], spines_filtered.astype(np.uint16), imagej=True, photometric='minisblack',
-                #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
-                
-                
-                #offset detected objects in image and add to all spines
-                
-                #logger.info(np.max(spines_filtered))
-                all_filtered_spines = all_filtered_spines + spines_filtered
-                #logger.info(f"{all_filtered_spines.shape}  {spines_filtered.shape}")
-    
-                #remove detected spines from original spine image to prevent double counting
-                spines[spines_filtered > 0] = 0
-                            
-    
-                # update summary with additional metrics
-                summary.insert(1, 'res_XY', settings.input_resXY)  
-                summary.insert(2, 'res_Z', settings.input_resZ)
-                dendrite_length = np.sum(skeleton == 1)
-                #summary.insert(3, 'Dendrite_ID', dendrite)
-                summary.insert(3, 'dendrite_length', dendrite_length)
-                dendrite_length_um = dendrite_length*settings.input_resXY
-                summary.insert(4, 'dendrite_length_um', dendrite_length_um)
-                dendrite_volume = np.sum(dendrite_mask ==1)
-                summary.insert(5, 'dendrite_vol', dendrite_volume)
-                dendrite_volume_um3 = dendrite_volume*settings.input_resXY*settings.input_resXY*settings.input_resZ
-                summary.insert(6, 'dendrite_vol_um3', dendrite_volume_um3)
-                summary.insert(9, 'spines_per_um_length', summary['total_spines'][0]/dendrite_length_um)
-                summary.insert(10, 'spines_per_um3_vol', summary['total_spines'][0]/dendrite_volume_um3)
-                                                              
-                #append to summary
-                # Append to the overall summary DataFrame
-                spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
-                all_filtered_spines_table = pd.concat([all_filtered_spines_table, spine_table], ignore_index=True)
-                
-                
-            else:
-                logger.info(f"  Dendrite excluded. Volume smaller than threshold of {min_dendrite_vol} voxels")
-        
-        #spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
-        
-        
-        #relable the label image
-        # Get unique labels while preserving the order
-        unique_labels = np.unique(all_filtered_spines[all_filtered_spines > 0])
-        #logger.info(unique_labels)
-        # Create a mapping from old labels to new sequential labels
-        label_mapping = {labelx: i for i, labelx in enumerate(unique_labels, start=1)}
 
-        # Apply this mapping to the image to create a relabelled image
-        relabelled_spines = np.copy(all_filtered_spines)
-        for old_label, new_label in label_mapping.items():
-            relabelled_spines[relabelled_spines == old_label] = new_label
+            # update summary with additional metrics
+            summary.insert(1, 'res_XY', settings.input_resXY)  
+            summary.insert(2, 'res_Z', settings.input_resZ)
+            dendrite_length = np.sum(skeleton == 1)
+            #summary.insert(3, 'Dendrite_ID', dendrite)
+            summary.insert(3, 'dendrite_length', dendrite_length)
+            dendrite_length_um = dendrite_length*settings.input_resXY
+            summary.insert(4, 'dendrite_length_um', dendrite_length_um)
+            dendrite_volume = np.sum(dendrite_mask ==1)
+            summary.insert(5, 'dendrite_vol', dendrite_volume)
+            dendrite_volume_um3 = dendrite_volume*settings.input_resXY*settings.input_resXY*settings.input_resZ
+            summary.insert(6, 'dendrite_vol_um3', dendrite_volume_um3)
+            summary.insert(9, 'spines_per_um_length', summary['total_spines'][0]/dendrite_length_um)
+            summary.insert(10, 'spines_per_um3_vol', summary['total_spines'][0]/dendrite_volume_um3)
+                                                          
+            #append to summary
+            # Append to the overall summary DataFrame
+            spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
+            all_filtered_spines_table = pd.concat([all_filtered_spines_table, spine_table], ignore_index=True)
+            
+            
+        else:
+            logger.info(f"   Dendrite excluded. Volume smaller than the threshold of {settings.min_dendrite_vol} voxels")
+    
+    #spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
+    
+    
+    #relable the label image
+    # Get unique labels while preserving the order
+    unique_labels = np.unique(all_filtered_spines[all_filtered_spines > 0])
+    #if unique_labels 
+    #logger.info(unique_labels)
+    # Create a mapping from old labels to new sequential labels
+    label_mapping = {labelx: i for i, labelx in enumerate(unique_labels, start=1)}
+
+    # Apply this mapping to the image to create a relabelled image
+    relabelled_spines = np.copy(all_filtered_spines)
+    for old_label, new_label in label_mapping.items():
+        relabelled_spines[relabelled_spines == old_label] = new_label
+    
+    if 'dendrite_distance' in locals():
+        neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines_orig, relabelled_spines, dendrite_labels, all_skeletons, dendrite_distance], locations.MIPs+"MIP_"+filename, 'float', settings)
+    else:
+        logger.info(f"  *No dendrites were analyzed for this image.")
+    
+    if len(all_filtered_spines_table) == 0:
+        logger.info(f"  *No spines were analyzed for this image.")
         
+    else:
         all_filtered_spines_table['label'] = all_filtered_spines_table['label'].map(label_mapping)
-       
-        
-        
-        all_filtered_spines_table.to_csv(locations.tables + 'Detected_spines_'+files[file]+'.csv',index=False) 
-        
-        neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines_orig, relabelled_spines, dendrite_labels, all_skeletons, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
-        
+   
+    
+    
+        all_filtered_spines_table.to_csv(locations.tables + 'Detected_spines_'+filename+'.csv',index=False) 
+    
+    
  
         #Extract MIPs for each spine
-        spine_MIPs, spine_slices, filtered_spine_MIPs, filtered_spine_slices= create_spine_arrays_in_blocks(image, relabelled_spines, all_filtered_spines_table, settings.spine_roi_volume_size, settings, locations, files[file],  logger, settings.GPU_block_size)
-    
-    
-        logger.info(f" Image processing complete for file {files[file]}\n")
-    if settings.shape_error == True:
-        logger.info(f"!!! One or more images moved to \\Not_Processed due to having\nless than 5 Z slices. Please modify these files before reprocessing.\n")
-    spine_summary.to_csv(locations.tables + 'Detected_spines_summary.csv',index=False) 
-    #logger.info("Spine analysis complete.\n")
-    
+        spine_MIPs, spine_slices, filtered_spine_MIPs, filtered_spine_slices= create_spine_arrays_in_blocks(image, relabelled_spines, all_filtered_spines_table, settings.roi_volume_size, settings, locations, filename,  logger, settings.GPU_block_size)
 
 
+    logger.info(f"  Processing complete for file {filename}\n---")
+
+    return spine_summary
+
+ 
 def analyze_spines_4D(settings, locations, log, logger):
     logger.info("Analyzing spines across time...")
     #spines = 1
@@ -670,7 +792,7 @@ def analyze_spines_4D(settings, locations, log, logger):
     
     for t in range(labels.shape[0]):
         logger.info(f" Measuring timepoint {t+1} of {labels.shape[0]}.")
-        spine_table, summary, spines_filtered = spine_measurements(image[t,:,:,:], spine_labels[t,:,:,:], 1, 0, settings.neuron_channel, dendrite_distance[t,:,:,:], settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, datasetname, logger)
+        spine_table, summary, spines_filtered = spine_measurementsV2(image[t,:,:,:], spine_labels[t,:,:,:], 1, 0, settings.neuron_channel, dendrite_distance[t,:,:,:], settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, datasetname, logger)
                                                               #soma_mask, soma_distance, )
         if t == 0:
             previous_spines = set(np.unique(spines_filtered))
@@ -745,7 +867,7 @@ def analyze_spines_4D(settings, locations, log, logger):
     
     #Extract MIPs for each spine
     if len(y_over_t) >=1:
-        spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.spine_roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
+        spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
 
     #Cleanup
     if os.path.exists(locations.nnUnet_input): shutil.rmtree(locations.nnUnet_input)
@@ -754,10 +876,8 @@ def analyze_spines_4D(settings, locations, log, logger):
     
     
     #logger.info("Spine analysis complete.\n")
-    
 
 
- 
 def create_mip_and_save_multichannel_tiff(images_3d, filename, bitdepth, settings):
     """
     Create MIPs from a list of 3D images, merge them into a multi-channel 2D image,
@@ -939,7 +1059,150 @@ def create_ellipsoidal_element(radius_z, radius_y, radius_x):
 
     return ellipsoid
 
-def spine_measurements(image, labels, dendrite, max_label, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
+def spine_measurementsV1(image, labels, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
+    """ measures intensity of each channel, as well as distance to dendrite
+    Args:
+        labels (detected cells)
+        settings (dictionary of settings)
+        
+    Returns:
+        pandas table and labeled spine image
+    """
+
+
+    if len(image.shape) == 3:
+        image = np.expand_dims(image, axis=1)
+
+    #Measure channel 1:
+    logger.info("  Measuring channel 1...")
+    main_table = pd.DataFrame(
+        measure.regionprops_table(
+            labels,
+            intensity_image=image[:,0,:,:],
+            properties=['label', 'centroid', 'area', 'mean_intensity', 'max_intensity'], #area is volume for 3D images
+            )
+        )
+    
+    #rename mean intensity
+    main_table.rename(columns={'mean_intensity':'C1_mean_int'}, inplace=True)
+    main_table.rename(columns={'max_intensity':'C1_max_int'}, inplace=True)
+    main_table.rename(columns={'centroid-0':'z'}, inplace=True)
+    main_table.rename(columns={'centroid-1':'y'}, inplace=True)
+    main_table.rename(columns={'centroid-2':'x'}, inplace=True)
+    
+    
+    
+    # measure remaining channels
+    for ch in range(image.shape[1]-1):
+        logger.info(f"  Measuring channel {ch+2}...")
+        #Measure
+        table = pd.DataFrame(
+            measure.regionprops_table(
+                labels,
+                intensity_image=image[:,ch+1,:,:],
+                properties=['label', 'mean_intensity', 'max_intensity'], #area is volume for 3D images
+            )
+        )
+        
+        #rename mean intensity
+        table.rename(columns={'mean_intensity':'C'+str(ch+2)+'_mean_int'}, inplace=True)
+        table.rename(columns={'max_intensity':'C'+str(ch+2)+'_max_int'}, inplace=True)
+        Mean = table['C'+str(ch+2)+'_mean_int']
+        Max = table['C'+str(ch+2)+'_max_int']
+        
+        #combine columns with main table
+        main_table = main_table.join(Mean)
+        main_table = main_table.join(Max)
+
+
+    #measure distance to dendrite
+    logger.info("  Measuring distances to dendrite...")
+    distance_table = pd.DataFrame(
+        measure.regionprops_table(
+            labels,
+            intensity_image=dendrite_distance,
+            properties=['label', 'min_intensity', 'max_intensity'], #area is volume for 3D images
+        )
+    )
+
+    #rename distance column
+    distance_table.rename(columns={'min_intensity':'dist_to_dendrite'}, inplace=True)
+    distance_table.rename(columns={'max_intensity':'spine_length'}, inplace=True)
+    
+    distance_col = distance_table["dist_to_dendrite"]
+    main_table = main_table.join(distance_col)
+    distance_col = distance_table["spine_length"]
+    main_table = main_table.join(distance_col)
+    
+
+
+    #filter out small objects
+    volume_min = sizes[0] #3
+    volume_max = sizes[1] #1500?
+    
+    #logger.info(f" Filtering spines between size {volume_min} and {volume_max} voxels...")
+    
+
+    #filter based on volume
+    filtered_table = main_table[(main_table['area'] > volume_min) & (main_table['area'] < volume_max) ] 
+    
+    #filter based on distance to dendrite
+    #logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
+    
+    filtered_table = filtered_table[(filtered_table['dist_to_dendrite'] < dist)] 
+    
+    #create vol um measurement
+    filtered_table.insert(5, 'spine_vol_um3', filtered_table['area'] * (settings.input_resXY*settings.input_resXY*settings.input_resZ))
+    filtered_table.rename(columns={'area': 'spine_vol'}, inplace=True)
+    
+    #create dist um cols
+    filtered_table.insert(9, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY*settings.input_resXY))
+    
+    filtered_table.insert(11, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY*settings.input_resXY))
+    
+    
+    labels = create_filtered_labels_image(labels, filtered_table, logger)
+
+    logger.info(f" After filtering {len(filtered_table)} spines remain from total of {len(main_table)}")
+
+    #create summary table
+    
+        
+    spine_reduced = filtered_table.drop(columns=['label', 'z', 'y', 'x'])
+
+    # Generate summary
+    summary_stats = spine_reduced.mean().to_dict()
+    summary_stats['avg_spine_vol'] = summary_stats.pop('spine_vol')  # Rename 'area' to 'Volume'
+    summary_stats['avg_spine_vol_um3'] = summary_stats.pop('spine_vol_um3')  # Rename 'area' to 'Volume'
+    summary_stats['avg_dist_to_dendrite'] = summary_stats.pop('dist_to_dendrite') 
+    summary_stats['avg_spine_length'] = summary_stats.pop('spine_length') 
+    summary_stats['avg_dist_to_dendrite_um'] = summary_stats.pop('dist_to_dendrite_um') 
+    summary_stats['avg_spine_length_um'] = summary_stats.pop('spine_length_um') 
+    
+    summary_stats['avg_C1_mean_int'] = summary_stats.pop('C1_mean_int')  
+    summary_stats['avg_C1_max_int'] = summary_stats.pop('C1_max_int')  
+
+    for ch in range(image.shape[1]-1):
+        logger.info(f" Measuring channel {(ch+2)}...")
+        summary_stats['avg_C'+str(ch+2)+'_mean_int'] = summary_stats.pop('C'+str(ch+2)+'_mean_int')  # Rename 'area' to 'Volume'
+        summary_stats['avg_C'+str(ch+2)+'_max_int'] = summary_stats.pop('C'+str(ch+2)+'_max_int')  # Rename 'area' to 'Volume'
+    
+    #shorten filename
+    filename = filename.replace('.tif', '')
+
+    # Convert summary to a DataFrame
+    summary_df = pd.DataFrame(summary_stats, index=[0])
+    summary_df.insert(0, 'total_spines', main_table.shape[0])
+    summary_df.insert(1, 'total_filtered_spines', filtered_table.shape[0])
+    summary_df.insert(0, 'Filename', filename)  # Insert a column at the beginning
+
+
+    filtered_table.to_csv(locations.tables + 'Detected_spines_'+filename+'.csv',index=False) 
+  
+    return filtered_table, summary_df, labels
+
+
+def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite_distance, sizes, dist, settings, locations, filename, logger):
     """ measures intensity of each channel, as well as distance to dendrite
     Args:
         labels (detected cells)
@@ -1034,7 +1297,7 @@ def spine_measurements(image, labels, dendrite, max_label, neuron_ch, dendrite_d
     spinebefore = len(filtered_table)
     #logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
     #logger.info(f"  filtered table before dist = {len(filtered_table)}. and distance = {dist}")
-    filtered_table = filtered_table[(filtered_table['dist_to_dendrite'] < dist)] 
+    filtered_table = filtered_table[(filtered_table['spine_length'] < dist)] 
     logger.info(f"  Spines before distance filter = {spinebefore}. After distance filter = {len(filtered_table)}. ")
     
     #update label numbers based on offset
@@ -1391,7 +1654,7 @@ def create_spine_arrays_in_blocks_4d(image, labels_filtered, table, volume_size,
     return mip_array, slice_z_array, mip_label_filtered_array, slice_before_mip_array
 
 def create_MIP_spine_arrays_in_blocks_4d(image, y_locs, x_locs, volume_size, settings, locations, file, logger, block_size=(50, 300, 300)):
-    #spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.spine_roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
+    #spine_MIPs, filtered_spine_MIP = create_MIP_spine_arrays_in_blocks_4d(neuron_MIP, y_over_t, x_over_t, settings.roi_volume_size, settings, locations, datasetname, logger, settings.GPU_block_size)
 
     #image will be TCYX
     

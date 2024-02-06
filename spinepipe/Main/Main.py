@@ -77,8 +77,7 @@ def create_dirs(Settings, Locations):
     create_dir(Locations.nnUnet_input)
     create_dir(Locations.arrays)
         
-    if Settings.save_val_data == True:
-        create_dir(Locations.MIPs)
+    create_dir(Locations.MIPs)
     
 def initialize_spinepipe(data_dir):
     
@@ -147,39 +146,38 @@ class Create_Settings():
         with open(data_dir+"Analysis_Settings.yaml", 'r') as ymlfile:
             #setting = yaml.safe_load(ymlfile)
             setting = yaml.load(ymlfile, Loader = PrettySafeLoader)
-
+            
             self.input_resXY = setting["Parameters"]["input_resXY"]
             self.input_resZ = setting["Parameters"]["input_resZ"]
+            self.model_resXY = setting["Parameters"]["model_resXY"]
+            self.model_resZ = setting["Parameters"]["model_resZ"]
             
             self.tiles_for_prediction = list(map(int, (ast.literal_eval(setting["Analysis"]["tiles_for_prediction"]))))
             self.roi_volume_size = setting["Analysis"]["roi_volume_size"]            
             self.GPU_block_size = list(map(int, (ast.literal_eval(setting["Analysis"]["GPU_block_size"]))))
-            
-            self.spine_roi_volume_size = setting["Analysis"]["spine_roi_volume_size"]
             self.erode_shape = list(map(int, (ast.literal_eval(setting["Analysis"]["erode_shape"]))))
             self.remove_touching_boarders = setting["Analysis"]["remove_touching_boarders"]
             
-            self.save_intermediate_data = setting["Analysis"]["save_intermediate_data"]
-            self.save_val_data = setting["Analysis"]["save_val_data"]
             self.validation_format = setting["Analysis"]["validation_format"]
             self.validation_scale = list(map(int, (ast.literal_eval(setting["Analysis"]["validation_scale"]))))
             self.validation_jpeg_comp = setting["Analysis"]["validation_jpeg_comp"]
   
-            self.neuron_channel = setting["Neuron"]["channel"]
-            self.neuron_restore = setting["Neuron"]["restore"]
-            self.neuron_rest_model_path = setting["Neuron"]["rest_model_path"]
-            self.neuron_rest_type = ast.literal_eval(setting["Neuron"]["rest_type"])
-            self.neuron_seg_model_path = setting["Neuron"]["seg_model_path"]
-            self.neuron_seg_model = ast.literal_eval(setting["Neuron"]["seg_model"])
-            self.neuron_seg_step = list(map(int, (ast.literal_eval(setting["Neuron"]["seg_model_step"]))))
-            self.neuron_seg_model_res = list(map(float, (ast.literal_eval(setting["Neuron"]["seg_model_res"]))))
-            self.neuron_prob_thresh = setting["Neuron"]["prob_thresh"]
-            self.neuron_spine_size = list(map(int, (ast.literal_eval(setting["Neuron"]["spine_size"]))))
-            self.neuron_intensity_filter = setting["Neuron"]["intensity_filter"]
+            self.c1_restore = setting["Channel1"]["restore"]
+            self.c1_rest_model_path = setting["Channel1"]["rest_model_path"]
+            self.c1_rest_type = ast.literal_eval(setting["Channel1"]["rest_type"])
+            
+            self.c2_restore = setting["Channel2"]["restore"]
+            self.c2_rest_model_path = setting["Channel2"]["rest_model_path"]
+            self.c2_rest_type = ast.literal_eval(setting["Channel2"]["rest_type"])
+            
+            self.c3_restore = setting["Channel3"]["restore"]
+            self.c3_rest_model_path = setting["Channel3"]["rest_model_path"]
+            self.c3_rest_type = ast.literal_eval(setting["Channel3"]["rest_type"])
+            
+            self.c4_restore = setting["Channel4"]["restore"]
+            self.c4_rest_model_path = setting["Channel4"]["rest_model_path"]
+            self.c4_rest_type = ast.literal_eval(setting["Channel4"]["rest_type"])
 
-            self.nnUnet_raw = setting["nnUnet"]["raw"]
-            self.nnUnet_preprocessed = setting["nnUnet"]["preprocessed"]
-            self.nnUnet_results = setting["nnUnet"]["results"]
             self.nnUnet_type = setting["nnUnet"]["type"]
             self.nnUnet_conda_path = setting["nnUnet"]["conda_path"]
             self.nnUnet_env = setting["nnUnet"]["env"]

@@ -5,9 +5,9 @@ Main functions
 
 
 """
-__title__     = 'spinpipe'
-__version__   = '0.9.0'
-__date__      = "25 July, 2023"
+__title__     = 'SpinePipe'
+__version__   = '0.9.6'
+__date__      = "23 December, 2023"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2022 by Luke Hammond'
@@ -19,8 +19,9 @@ import numpy as np
 import pandas as pd
 from skimage.io import imread
 from skimage import measure, morphology
-from spinepipe.ImageAnalysis.ImageAnalysis import spine_detection, spine_measurements
+import spinepipe.ImageAnalysis.ImageAnalysis as imgan
 from scipy import ndimage
+
 
 
 def validate_analysis(labels1, labels2, settings, locations, logger):
@@ -105,14 +106,13 @@ def validate_analysis(labels1, labels2, settings, locations, logger):
                
                 #Detection
                 
-                spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
+                spine_labels = imgan.spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
                 
                 max_label = np.max(all_filtered_spines)
               
                 #Measurements
-                spine_table, summary, spines_filtered = spine_measurements(all_dendrites, spine_labels, dendrite, max_label, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, gt_files[file], logger)
+                spine_table, summary, spines_filtered = imgan.spine_measurements(all_dendrites, spine_labels, dendrite, max_label, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, gt_files[file], logger)
                                                                   #soma_mask, soma_distance, )
-                
                
                 #offset detected objects in image and add to all spines
                 
@@ -172,11 +172,7 @@ def validate_analysis(labels1, labels2, settings, locations, logger):
         #Extract MIPs for each spine
         #spine_MIPs, spine_slices, filtered_spine_MIPs, filtered_spine_slices= create_spine_arrays_in_blocks(image, relabelled_spines, all_filtered_spines_table, settings.spine_roi_volume_size, settings, locations, files[file],  logger, settings.GPU_block_size)
         
-        
-        
-        
-        
-        
+
         
         #### OUTPUT SPINES --- UPDATE TO FUNCTIONS
         spines = (output == 1).astype(np.uint8)
@@ -213,12 +209,12 @@ def validate_analysis(labels1, labels2, settings, locations, logger):
                
                 #Detection
                 
-                spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
+                spine_labels = imgan.spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
                 
                 max_label = np.max(all_filtered_spines)
               
                 #Measurements
-                spine_table, summary, spines_filtered = spine_measurements(all_dendrites, spine_labels, dendrite, max_label, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, analysis_files[file], logger)
+                spine_table, summary, spines_filtered = imgan.spine_measurements(all_dendrites, spine_labels, dendrite, max_label, settings.neuron_channel, dendrite_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, analysis_files[file], logger)
                                                                   #soma_mask, soma_distance, )
                 
                
