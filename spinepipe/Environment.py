@@ -12,7 +12,7 @@ To initialize the main functions in a spine-analysis script use:
 """
 __title__     = 'spinpipe'
 __version__   = '0.1.0'
-__author__    = 'Luke Hammond <lh2881@columbia.edu>'
+__author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2022 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'

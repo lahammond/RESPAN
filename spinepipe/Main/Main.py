@@ -78,6 +78,8 @@ def create_dirs(Settings, Locations):
     create_dir(Locations.arrays)
         
     create_dir(Locations.MIPs)
+    create_dir(Locations.swcs)
+    
     
 def initialize_spinepipe(data_dir):
     
@@ -132,6 +134,7 @@ class Create_Locations():
         self.plots = data_dir+"Plots/"
         self.arrays = data_dir+"Spine_Arrays/"
         self.nnUnet_input = data_dir+"nnUnet_input/"
+        self.swcs = data_dir+"SWC_files/"
       
     def inspect(self):
         for attr_name in dir(self):
@@ -182,6 +185,7 @@ class Create_Settings():
             self.nnUnet_conda_path = setting["nnUnet"]["conda_path"]
             self.nnUnet_env = setting["nnUnet"]["env"]
     
+            self.Vaa3Dpath = setting["Vaa3D"]["path"]
     def inspect(self):
         for attr_name in dir(self):
             if not callable(getattr(self, attr_name)) and not attr_name.startswith("__"):

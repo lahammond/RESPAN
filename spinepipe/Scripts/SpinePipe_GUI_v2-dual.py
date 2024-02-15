@@ -6,7 +6,7 @@ Created on Fri Jul 21 11:16:58 2023
 __title__     = 'SpinePipe'
 __version__   = '0.9.7'
 __date__      = "2 February, 2024"
-__author__    = 'Luke Hammond <lh2881@columbia.edu>'
+__author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'
@@ -84,7 +84,7 @@ class AnalysisWorker(QThread):
        
     def __init__(self, spinepipe, directory, model_dir, save_intermediate, save_validation,
                                      inputxy, inputz, modelxy, modelz, neuron_ch, analysis_method,
-                                     image_restore, axial_restore,
+                                     image_restore, axial_restore, swc,
                                      min_dendrite_vol, spine_vol, spine_dist, HistMatch,
                                      Track, reg_method, use_yaml_res, logger):
 
@@ -97,6 +97,7 @@ class AnalysisWorker(QThread):
         self.save_validation = save_validation
         self.image_restore = image_restore
         self.axial_restore = axial_restore
+        self.swc = swc
         self.inputxy = inputxy
         self.inputz = inputz
         self.modelxy = modelxy
@@ -144,6 +145,7 @@ class AnalysisWorker(QThread):
                     self.logger.info("SpinePipe Version: "+__version__)
                     self.logger.info("Release Date: "+__date__) 
                     self.logger.info("Created by: "+__author__+"")
+                    self.logger.info("Department of Neurology, The Ohio State University")
                     self.logger.info("Zuckerman Institute, Columbia University\n")
              
                                    
@@ -161,6 +163,7 @@ class AnalysisWorker(QThread):
                     settings.axial_restore = self.axial_restore
                     settings.neuron_channel = int(self.neuron_ch)
                     settings.analysis_method = self.analysis_method
+                    settings.Vaa3d = self.swc
                     #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
                     settings.min_dendrite_vol = round(self.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
                     settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in self.spine_vol] 
@@ -170,20 +173,21 @@ class AnalysisWorker(QThread):
                     settings.reg_method = self.reg_method
                     
         
-                    self.logger.info("Processing folder: "+subfolder_path)
-                    self.logger.info(f" Image resolution: {settings.input_resXY}um XY, {settings.input_resZ}um Z")
+                    self.logger.info("SpinePipe Parameters:")
+                    self.logger.info(f" Image resolution: {settings.input_resXY}µm XY, {settings.input_resZ}µm Z")
                     self.logger.info(f" Model used: {settings.neuron_seg_model_path}")    
-                    self.logger.info(f" Model resolution: {settings.model_resXY}um XY, {settings.model_resZ}um Z")
-                    self.logger.info(f" Dendrite volume set to: {self.min_dendrite_vol} um, {settings.min_dendrite_vol} voxels") 
-                    self.logger.info(f" Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} um3, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
-                    self.logger.info(f" Spine distance filter set to: {self.spine_dist} um, {settings.neuron_spine_dist} pixels") 
+                    self.logger.info(f" Model resolution: {settings.model_resXY}µm XY, {settings.model_resZ}µm Z")
+                    self.logger.info(f" Dendrite volume set to: {self.min_dendrite_vol} µm, {settings.min_dendrite_vol} voxels") 
+                    self.logger.info(f" Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} µm<sup>3</sup>, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
+                    self.logger.info(f" Spine distance filter set to: {self.spine_dist} µm, {settings.neuron_spine_dist} pixels") 
                     self.logger.info(f" Analysis method: {self.analysis_method}") 
                     self.logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
                     self.logger.info(f" Tracking set to: {settings.Track}, using {settings.reg_method} registration.") 
                     self.logger.info(f" Image restoration set to {self.image_restore} and axial restoration set to {self.axial_restore}")
                     self.logger.info("")
+                    
                     #Processing
-            
+                    self.logger.info("Processing folder: "+subfolder_path)
             
                     
                     log = imgan.restore_and_segment(settings, locations, self.logger)
@@ -194,7 +198,7 @@ class AnalysisWorker(QThread):
                         strk.track_spines(settings, locations, log, self.logger)
                         imgan.analyze_spines_4D(settings, locations, log, self.logger)
                     
-                    self.logger.info("SpinePipe analysis complete.")
+                    self.logger.info("-----------------------------------------------------------------------------------------------------")
                     self.logger.info("SpinePipe Version: "+__version__)
                     self.logger.info("Release Date: "+__date__+"") 
                     self.logger.info("Created by: "+__author__+"") 
@@ -249,6 +253,7 @@ class ValidationWorker(QThread):
             self.logger.info("SpinePipe Validation Tool - Version: "+__version__)
             self.logger.info("Release Date: "+__date__) 
             self.logger.info("Created by: "+__author__+"")
+            self.logger.info("Department of Neurology, The Ohio State University")
             self.logger.info("Zuckerman Institute, Columbia University\n")
               
            
@@ -265,10 +270,10 @@ class ValidationWorker(QThread):
             
             
             self.logger.info("Processing folder: "+self.analysis_output)
-            self.logger.info(f" Image resolution: {settings.input_resXY}um XY, {settings.input_resZ}um Z")
+            self.logger.info(f" Image resolution: {settings.input_resXY}µm XY, {settings.input_resZ}µm Z")
    
-            self.logger.info(f" Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} um3, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
-            self.logger.info(f" Spine distance filter set to: {self.spine_dist} um, {settings.neuron_spine_dist} pixels") 
+            self.logger.info(f" Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} µm<sup>3</sup>, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
+            self.logger.info(f" Spine distance filter set to: {self.spine_dist} µm, {settings.neuron_spine_dist} pixels") 
             self.logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
             
             #Processing
@@ -277,12 +282,13 @@ class ValidationWorker(QThread):
             
           
             
-            self.logger.info("Validation complete.")
+            self.logger.info("-----------------------------------------------------------------------------------------------------")
             self.logger.info("SpinePipe Validation Tool - Version: "+__version__)
             self.logger.info("Release Date: "+__date__+"") 
             self.logger.info("Created by: "+__author__+"") 
+            self.logger.info("Department of Neurology, The Ohio State University")
             self.logger.info("Zuckerman Institute, Columbia University\n") 
-            self.logger.info("--------------------------------------------------------------------")
+            self.logger.info("-----------------------------------------------------------------------------------------------------")
             
             self.task_done.emit("")
             
@@ -412,9 +418,9 @@ class SpinePipeValidation(QWidget):
         options_layout1 = QVBoxLayout()
         options_group1.setLayout(options_layout1)
         
-        self.inputdata_xy_label = QLabel("Image voxel size XY (um):")
+        self.inputdata_xy_label = QLabel("Image voxel size XY (µm):")
         self.inputdata_xy = QLineEdit("0.102")
-        self.inputdata_z_label = QLabel("Image voxel size Z (um):")
+        self.inputdata_z_label = QLabel("Image voxel size Z (µm):")
         self.inputdata_z = QLineEdit("1")
         horizontal_input = QHBoxLayout()
         horizontal_input.addWidget(self.inputdata_xy_label)
@@ -424,11 +430,11 @@ class SpinePipeValidation(QWidget):
         
         self.neuron_channel_label = QLabel("Neuron/dendrite channel:")
         self.neuron_channel_input = QLineEdit("1") 
-        self.float_label_1 = QLabel("Minimum dendrite size in um3 (dendrites smaller than this will be ignored):")
+        self.float_label_1 = QLabel("Minimum dendrite size in µm (dendrites smaller than this will be ignored):")
         self.float_input_1 = QLineEdit("15")
-        self.float_label_2 = QLabel("Spine volume filter (min, max volume in um3):")
+        self.float_label_2 = QLabel("Spine volume filter (min, max volume in µm<sup>3</sup>):")
         self.float_input_2 = QLineEdit("0.03,15")
-        self.float_label_3 = QLabel("Spine distance filter (max distance from dendrite in um):")
+        self.float_label_3 = QLabel("Spine distance filter (max distance from dendrite in µm):")
         self.float_input_3 = QLineEdit("4")
      
         self.neuron_channel_input.setFixedWidth(90)
@@ -765,9 +771,9 @@ class SpinePipeAnalysis(QWidget):
         res_options_layout = QVBoxLayout()
         res_options.setLayout(res_options_layout)
         
-        self.inputdata_xy_label = QLabel("Image voxel size XY (um):")
+        self.inputdata_xy_label = QLabel("Image voxel size XY (µm):")
         self.inputdata_xy = QLineEdit("0.102")
-        self.inputdata_z_label = QLabel("Image voxel size Z (um):")
+        self.inputdata_z_label = QLabel("Image voxel size Z (µm):")
         self.inputdata_z = QLineEdit("1")
         horizontal_input = QHBoxLayout()
         horizontal_input.addWidget(self.inputdata_xy_label)
@@ -775,9 +781,9 @@ class SpinePipeAnalysis(QWidget):
         horizontal_input.addWidget(self.inputdata_z_label)
         horizontal_input.addWidget(self.inputdata_z)
         
-        self.modeldata_xy_label = QLabel("Model voxel size XY (um):")
+        self.modeldata_xy_label = QLabel("Model voxel size XY (µm):")
         self.modeldata_xy = QLineEdit("0.102")
-        self.modeldata_z_label = QLabel("Model voxel size Z (um):")
+        self.modeldata_z_label = QLabel("Model voxel size Z (µm):")
         self.modeldata_z = QLineEdit("1")
         self.res_opt = QCheckBox("Use voxel sizes in analysis_settings.yaml")
         self.res_opt.setChecked(False)
@@ -838,13 +844,13 @@ class SpinePipeAnalysis(QWidget):
         options_group1.setFont(titlefont)
         options_layout1 = QVBoxLayout()
         options_group1.setLayout(options_layout1)
-        self.neuron_channel_label = QLabel("Neuron/dendrite channel:")
+        self.neuron_channel_label = QLabel("Channel containing neuron/dendrite signal:")
         self.neuron_channel_input = QLineEdit("1")        
-        self.float_label_1 = QLabel("Minimum dendrite size in um3 (dendrites smaller than this will be ignored):")
+        self.float_label_1 = QLabel("Minimum dendrite volume (µm<sup>3</sup>, dendrites smaller than this will be ignored):")
         self.float_input_1 = QLineEdit("15")
-        self.float_label_2 = QLabel("Spine volume filter (min, max volume in um3):")
+        self.float_label_2 = QLabel("Spine volume filter (min, max volume in µm<sup>3</sup>):")
         self.float_input_2 = QLineEdit("0.03,15")
-        self.float_label_3 = QLabel("Spine distance filter (max distance from dendrite in um):")
+        self.float_label_3 = QLabel("Spine distance filter (max distance from dendrite in µm):")
         self.float_input_3 = QLineEdit("4")
         self.analysis_method_label = QLabel("Select analysis method for analyzing spines:")
         self.analysis_method = QComboBox()
@@ -889,6 +895,8 @@ class SpinePipeAnalysis(QWidget):
         self.save_validation.setChecked(True)
         self.save_intermediate = QCheckBox("Save intermediate data")
         self.save_intermediate.setChecked(False) 
+        self.swc_gen = QCheckBox("Generate SWC files for dendrite/neuron")
+        self.swc_gen.setChecked(False) 
         self.HistMatch = QCheckBox("Histogram matching (matches image histograms to first image in the series)")
         self.HistMatch.setChecked(False) 
         self.Track = QCheckBox("Spine tracking (temporal analysis of spines)")
@@ -909,6 +917,7 @@ class SpinePipeAnalysis(QWidget):
         options_layout2.addLayout(save_options)
         options_layout2.addWidget(self.image_restore_opt)
         options_layout2.addWidget(self.axial_restore_opt)
+        options_layout2.addWidget(self.swc_gen)
         
         options_layout2.addWidget(self.HistMatch)
         options_layout2.addWidget(self.Track)
@@ -964,7 +973,7 @@ class SpinePipeAnalysis(QWidget):
         # Retrieve individual variables from the dictionary
         
         try:
-            with open('parametersscriptGUI.pkl', 'rb') as f:
+            with open('parametersanalysisGUI.pkl', 'rb') as f:
                 variables_dict = pickle.load(f)
                 
             #retreive
@@ -984,6 +993,7 @@ class SpinePipeAnalysis(QWidget):
             
             image_restore = variables_dict.get('image_restore', None)
             axial_restore = variables_dict.get('axial_restore', None)
+            swc_gen= variables_dict.get('swc_gen', None)
             save_val_data = variables_dict.get('save_val_data', None)
             save_int_data = variables_dict.get('save_int_data', None)
             hist_match = variables_dict.get('hist_match', None)
@@ -1009,6 +1019,7 @@ class SpinePipeAnalysis(QWidget):
             
             self.image_restore_opt.setChecked(image_restore)
             self.axial_restore_opt.setChecked(axial_restore)
+            self.swc_gen.setChecked(swc_gen)
             self.save_validation.setChecked(save_val_data)
             self.save_intermediate.setChecked(save_int_data)
             self.HistMatch.setChecked(hist_match)
@@ -1087,6 +1098,7 @@ class SpinePipeAnalysis(QWidget):
         
         image_restore = self.image_restore_opt.isChecked()
         axial_restore = self.axial_restore_opt.isChecked()
+        swc_gen = self.swc_gen.isChecked()
         save_int_data = self.save_intermediate.isChecked()
         save_val_data = self.save_validation.isChecked()
         hist_match = self.HistMatch.isChecked()
@@ -1111,6 +1123,7 @@ class SpinePipeAnalysis(QWidget):
             
             'image_restore': image_restore,
             'axial_restore': axial_restore,
+            'swc_gen': swc_gen,
             'save_val_data': save_val_data,
             'save_int_data': save_int_data,
             'hist_match': hist_match,
@@ -1120,7 +1133,7 @@ class SpinePipeAnalysis(QWidget):
         
         
         # Save the dictionary to a pickle file
-        with open('parametersscriptGUI.pkl', 'wb') as f:
+        with open('parametersanalysisGUI.pkl', 'wb') as f:
             pickle.dump(variables_dict, f)
             
             
@@ -1211,6 +1224,7 @@ class SpinePipeAnalysis(QWidget):
         HistMatch = self.HistMatch.isChecked()
         Track = self.Track.isChecked()
         use_yaml_res = self.res_opt.isChecked()
+        swc_gen = self.swc_gen.isChecked()
         
         directory =  directory + "/"
         
@@ -1227,7 +1241,7 @@ class SpinePipeAnalysis(QWidget):
         #self.worker = AnalysisWorker(spinepipe, directory, other_options, min_dendrite_vol, spine_vol, spine_dist, HistMatch, Track, reg_method, self.logger)
         self.worker = AnalysisWorker(spinepipe, directory, model_dir, save_intermediate, save_validation,
                                      inputxy, inputz, modelxy, modelz, neuron_ch, analysis_method,
-                                     image_restore, axial_restore,
+                                     image_restore, axial_restore, swc_gen,
                                      min_dendrite_vol, spine_vol, spine_dist, HistMatch,
                                      Track, reg_method, use_yaml_res, self.logger)
        
