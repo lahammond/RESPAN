@@ -178,7 +178,7 @@ class AnalysisWorker(QThread):
                     self.logger.info(f" Model used: {settings.neuron_seg_model_path}")    
                     self.logger.info(f" Model resolution: {settings.model_resXY}µm XY, {settings.model_resZ}µm Z")
                     self.logger.info(f" Dendrite volume set to: {self.min_dendrite_vol} µm, {settings.min_dendrite_vol} voxels") 
-                    self.logger.info(f" Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} µm<sup>3</sup>, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
+                    self.logger.info(f"  Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} µm<sup>3</sup>, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels") 
                     self.logger.info(f" Spine distance filter set to: {self.spine_dist} µm, {settings.neuron_spine_dist} pixels") 
                     self.logger.info(f" Analysis method: {self.analysis_method}") 
                     self.logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
@@ -188,6 +188,7 @@ class AnalysisWorker(QThread):
                     
                     #Processing
                     self.logger.info("Processing folder: "+subfolder_path)
+                    self.logger.info("")
             
                     
                     log = imgan.restore_and_segment(settings, locations, self.logger)
@@ -264,7 +265,7 @@ class ValidationWorker(QThread):
             settings.input_resXY = self.inputxy
             settings.input_resZ = self.inputz
             settings.neuron_channel = self.neuron_ch
-            settings.min_dendrite_vol = self.min_dendrite_vol #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
+            settings.min_dendrite_vol = round(self.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
             settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in self.spine_vol] 
             settings.neuron_spine_dist = round(self.spine_dist / (settings.input_resXY),2)
             
@@ -428,7 +429,7 @@ class SpinePipeValidation(QWidget):
         horizontal_input.addWidget(self.inputdata_z_label)
         horizontal_input.addWidget(self.inputdata_z)  
         
-        self.neuron_channel_label = QLabel("Neuron/dendrite channel:")
+        self.neuron_channel_label = QLabel("Channel containing neuron/dendrite signal:")
         self.neuron_channel_input = QLineEdit("1") 
         self.float_label_1 = QLabel("Minimum dendrite size in µm (dendrites smaller than this will be ignored):")
         self.float_input_1 = QLineEdit("15")
@@ -568,9 +569,9 @@ class SpinePipeValidation(QWidget):
         inputz = str(self.inputdata_z.text())
         
         neuron_ch = str(self.neuron_channel_input.text())
-        min_dend = float(self.float_input_1.text())
-        spine_vol = float(self.float_input_2.text())
-        spine_dist = float(self.float_input_3.text())
+        min_dend = str(self.float_input_1.text())
+        spine_vol = str(self.float_input_2.text())
+        spine_dist = str(self.float_input_3.text())
         
        
         variables_dict = {

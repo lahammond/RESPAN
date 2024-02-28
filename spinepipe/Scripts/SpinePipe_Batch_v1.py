@@ -48,7 +48,7 @@ main.check_gpu()
 
 #Dataset Directories
 
-data_dirs = ["D:/Project_Data/SpineAnalysis/Testing/Error/",
+data_dirs = ["D:/Project_Data/SpinePipe/Testing/Spine_tracking/",
              ] #,
             # "D:/Project_Data/SpineAnalysis/Testing/FastTest2"]
             #"D:/Project_Data/SpineAnalysis/1_Spine_Tracking_Datasets/Animal1/Segment1/"
@@ -91,7 +91,7 @@ for data_dir in data_dirs:
               
                 #Load in experiment parameters and analysis settings   
                 settings, locations = main.initialize_spinepipe(subfolder_path)
-                 
+                 #%%
                 #Modify specific parameters and settings:    
                 settings.save_intermediate_data = True
                 settings.spine_roi_volume_size = 5 #4 in microns in x, y, z - approx 13px for 0.3 resolution data
@@ -103,15 +103,15 @@ for data_dir in data_dirs:
                 settings.reg_method = "Elastic" #or "Elastic"
                 settings.erode_shape = (0.5,2,2)
                 settings.min_dendrite_vol = 15
-                
+                settings.image_restore = False
                 settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/spinepipe/Models/Dataset022_SpinesDendrites/"
                 settings.seg_model = ("nnUnet","")
                 
             
                 logger.info("Processing folder: "+subfolder_path)
                 logger.info(f" Image resolution: {settings.input_resXY}um XY, {settings.input_resZ}um Z")
-                logger.info(f" Model used: {settings.neuron_seg_model_path}")    
-                logger.info(f" Model resolution: {settings.neuron_seg_model_res[0]}um XY, {settings.neuron_seg_model_res[2]}um Z")    
+                #logger.info(f" Model used: {settings.neuron_seg_model_path}")    
+                #logger.info(f" Model resolution: {settings.neuron_seg_model_res[0]}um XY, {settings.neuron_seg_model_res[2]}um Z")    
                 logger.info(f" Spine volume set to: {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels.") 
                 logger.info(f" GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}") 
             
