@@ -193,7 +193,8 @@ class AnalysisWorker(QThread):
                     
                     log = imgan.restore_and_segment(settings, locations, self.logger)
             
-                    imgan.analyze_spines(settings, locations, log, self.logger)
+                    if settings.Track == False:        
+                        imgan.analyze_spines(settings, locations, log, self.logger)
                     
                     if settings.Track == True:
                         strk.track_spines(settings, locations, log, self.logger)
