@@ -1550,7 +1550,7 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
         label_vol = cp.expand_dims(label_vol, axis=-1)
         spine_mask = cp.expand_dims(spine_mask, axis=-1)
         
-        logger.info(f' image{image_vol.shape} ,spine_vol.shape {spine_vol.shape}labelvol shape {label_vol.shape}, spine maskshape {spine_mask.shape} ')
+        #logger.info(f' image{image_vol.shape} ,spine_vol.shape {spine_vol.shape}labelvol shape {label_vol.shape}, spine maskshape {spine_mask.shape} ')
         
         #for the labels we actually want the dendrite label, but only the spine label for the center spine - requires masking spine label, but not dendrite label
         #cleaned_label = cp.copy(extracted_label)
@@ -1583,7 +1583,7 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
         label_mip=cp.max(label_vol, axis = 0)
         label_mip = label_mip[cp.newaxis, :, :]
         
-        logger.info(f' image mip {image_mip.shape} ,spine mip.shape {spine_mip.shape} label mip shape {label_mip.shape} ')
+        #logger.info(f' image mip {image_mip.shape} ,spine mip.shape {spine_mip.shape} label mip shape {label_mip.shape} ')
         
         merge_mip = cp.concatenate((image_mip, spine_mip, label_mip), axis=0)
         
@@ -1593,7 +1593,7 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
         spine_slice = spine_slice[cp.newaxis, :, :]
         label_slice = label_slice[cp.newaxis, :, :]
         
-        logger.info(f' image slice {image_slice.shape} ,spine slice.shape {spine_slice.shape} label slice shape {label_slice.shape} ')
+        #logger.info(f' image slice {image_slice.shape} ,spine slice.shape {spine_slice.shape} label slice shape {label_slice.shape} ')
         
         merge_slice = cp.concatenate((image_slice, spine_slice, label_slice), axis=0)
         
@@ -1616,11 +1616,13 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
         #Could potentially add axis to volumes at beginning, then do all the mips w/o expansion - would be cleaner merge on axis 1 instead of 0
         # ie.. merge vol then create MIP and slice- come back and clean up if time...
         #CZYX
-        image_vol = image_vol[cp.newaxis, :, :, :]
-        spine_vol = image_vol[cp.newaxis, :, :, :]
-        label_vol = image_vol[cp.newaxis, :, :, :]
+        image_vol = cp.expand_dims(image_vol, axis=0)
+        #image_vol = image_vol[cp.newaxis, :, :, :]
+        spine_vol = cp.expand_dims(spine_vol, axis=0)
+        #spine_vol = image_vol[cp.newaxis, :, :, :, :]
+        label_vol = cp.expand_dims(label_vol, axis=0)
         
-        logger.info(f' image{image_vol.shape} ,spine_vol.shape {spine_vol.shape}labelvol shape {label_vol.shape}, spine maskshape {spine_mask.shape} ')
+        #logger.info(f' image{image_vol.shape} ,spine_vol.shape {spine_vol.shape}labelvol shape {label_vol.shape} ')
         
         merge_vol = cp.concatenate((image_vol, spine_vol, label_vol), axis=0)
         merge_vol_list.append(merge_vol.get())
@@ -1710,7 +1712,7 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
                     block_table.loc[:, 'x'] = block_table['x'] - padded_x_start
                     
                     block_mip, block_slice, block_vol = create_filtered_and_unfiltered_spine_arrays_cupy(
-                        block_image, block_spines_filtered, block_labels, block_table, volume_size, settings, locations, file
+                        block_image, block_spines_filtered, block_labels, block_table, volume_size, settings, locations, file, logger
                     )
                     mip_list.extend(block_mip)
                     slice_list.extend(block_slice)
@@ -1725,6 +1727,8 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
     mip_array = np.stack(mip_list, axis = 0)
     slice_array = np.stack(slice_list, axis=0)
     vol_array = np.stack(vol_list, axis=0)
+    
+    vol_array = np.transpose(vol_array, (0, 2, 1, 3, 4))
     #mip_label_filtered_array = np.stack(mip_label_filtered_list, axis=0)
     #slice_before_mip_array = np.stack(slice_before_mip_list, axis=0)
     
@@ -1736,7 +1740,7 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
                      metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX','mode': 'composite'},
                      resolution=(1/settings.input_resXY, 1/settings.input_resXY))
     tifffile.imwrite(locations.arrays + "/Spine_vols_" + file, vol_array.astype(np.uint16), imagej=True, photometric='minisblack',
-                     metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'MZCYX','mode': 'composite'},
+                     metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'TZCYX','mode': 'composite'},
                      resolution=(1/settings.input_resXY, 1/settings.input_resXY))
     #tifffile.imwrite(locations.arrays+"/Masked_Spines_MIPs_"+file, mip_label_filtered_array.astype(np.uint16), imagej=True, photometric='minisblack',
     #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX', 'mode': 'composite'},
