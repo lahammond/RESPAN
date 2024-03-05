@@ -5,12 +5,10 @@ Image Analysis tools and functions for spine analysis
 
 
 """
-__title__     = 'SpinePipe'
-__version__   = '0.9.5'
-__date__      = "6 December, 2023"
+
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
-__copyright__ = 'Copyright © 2023 by Luke Hammond'
+__copyright__ = 'Copyright © 2024 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'
 
 

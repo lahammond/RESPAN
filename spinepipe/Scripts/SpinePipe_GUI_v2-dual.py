@@ -4,8 +4,8 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'SpinePipe'
-__version__   = '0.9.7'
-__date__      = "2 February, 2024"
+__version__   = '0.9.8'
+__date__      = "3 March, 2024"
 __author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2023 by Luke Hammond'
@@ -117,6 +117,7 @@ class AnalysisWorker(QThread):
     def run(self):
         self.is_running = True
         
+               
         try:
             
             sys.path.append(self.spinepipe)
@@ -189,24 +190,33 @@ class AnalysisWorker(QThread):
                     #Processing
                     self.logger.info("Processing folder: "+subfolder_path)
                     self.logger.info("")
-            
                     
-                    log = imgan.restore_and_segment(settings, locations, self.logger)
-            
-                    if settings.Track == False:        
-                        imgan.analyze_spines(settings, locations, log, self.logger)
                     
-                    if settings.Track == True:
-                        strk.track_spines(settings, locations, log, self.logger)
-                        imgan.analyze_spines_4D(settings, locations, log, self.logger)
-                    
-                    self.logger.info("-----------------------------------------------------------------------------------------------------")
-                    self.logger.info("SpinePipe Version: "+__version__)
-                    self.logger.info("Release Date: "+__date__+"") 
-                    self.logger.info("Created by: "+__author__+"") 
-                    self.logger.info("Department of Neurology, The Ohio State University")
-                    self.logger.info("Zuckerman Institute, Columbia University\n") 
-                    self.logger.info("-----------------------------------------------------------------------------------------------------")
+                           
+                    if os.path.exists(settings.nnUnet_conda_path+'/envs/'+settings.nnUnet_env+'1/'):
+        
+                        log = imgan.restore_and_segment(settings, locations, self.logger)
+                
+                        if settings.Track == False:        
+                            imgan.analyze_spines(settings, locations, log, self.logger)
+                        
+                        if settings.Track == True:
+                            strk.track_spines(settings, locations, log, self.logger)
+                            imgan.analyze_spines_4D(settings, locations, log, self.logger)
+                        
+                        self.logger.info("-----------------------------------------------------------------------------------------------------")
+                        self.logger.info("SpinePipe Version: "+__version__)
+                        self.logger.info("Release Date: "+__date__+"") 
+                        self.logger.info("Created by: "+__author__+"") 
+                        self.logger.info("Department of Neurology, The Ohio State University")
+                        self.logger.info("Zuckerman Institute, Columbia University\n") 
+                        self.logger.info("-----------------------------------------------------------------------------------------------------")
+                    else:
+                        self.logger.info("Error: conda path or nnUNet environment not created or set correctly.")
+                        self.logger.info(" Path set to:"+settings.nnUnet_conda_path+'/envs/'+settings.nnUnet_env+'/')
+                        self.logger.info(" Please check installation, or that paths set correctly in Analysis_Settings.yaml")
+                
+
             
             self.task_done.emit("")
             
@@ -974,6 +984,9 @@ class SpinePipeAnalysis(QWidget):
         
         # Retrieve individual variables from the dictionary
         
+        
+        
+        
         try:
             with open('parametersanalysisGUI.pkl', 'rb') as f:
                 variables_dict = pickle.load(f)
@@ -1146,6 +1159,8 @@ class SpinePipeAnalysis(QWidget):
         self.progress.setVisible(True)
         self.progress.setRange(0, 0)  # Set to busy mode
         
+        
+        
         spinepipe = self.spinepipedir_label.text().replace("Selected directory: ", "")
         if spinepipe == "No directory selected.":
             QMessageBox.critical(self, "Error", "No directory selected.")
@@ -1276,6 +1291,8 @@ class TabTwo(QWidget):
         # Code to run the second program
         print("Running Program 2")
 '''
+
+
         
     
 app = QApplication([])
@@ -1301,7 +1318,9 @@ palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
 app.setPalette(palette)
 
 
-splash = Splash("SpinePipe loading...", 3000)
+splash = Splash("SpinePipe loading...", 2000)
+splash.move(600, 600)
+
 splash.show()
 
 # Ensures that the application is fully up and running before closing the splash screen

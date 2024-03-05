@@ -5,12 +5,10 @@ Image Analysis tools and functions for spine analysis
 
 
 """
-__title__     = 'SpinePipe'
-__version__   = '0.9.7'
-__date__      = "2 February, 2024"
+
 __author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
-__copyright__ = 'Copyright © 2023 by Luke Hammond'
+__copyright__ = 'Copyright © 2024 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/spinepipe'
 
 import os
@@ -297,8 +295,12 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
         ##uncomment if issues with nnUnet
         #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
         
+       
+
+        
         stdout, cmd = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, 
-                                    locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings, logger)
+                                        locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings, logger)
+
         
         #logger.info(cmd)
         
@@ -616,9 +618,16 @@ def spine_and_whole_neuron_processing(image, labels, spine_summary, settings, lo
             #use the spine_MIPs to measure spine area        
             label_areas = spine_MIPs[:, 1, :, :]
             spine_areas = np.sum(label_areas > 0, axis=(1, 2))
-            df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
             
-            df_spine_areas['label'] = spine_table['label'].values
+            spine_masks = label_areas > 0
+            spine_ids = np.nan_to_num(np.sum(label_areas * spine_masks, axis=(1, 2)) / np.sum(spine_masks, axis=(1, 2), where=spine_masks))
+
+            df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
+            df_spine_areas['label'] = spine_ids
+            
+            
+            
+            #df_spine_areas['label'] = spine_table['label'].values
             # Reindex df_spine_areas to match the index of spine_table
             #df_spine_areas_reindex = df_spine_areas.reindex(spine_table.index)
             #df_spine_areas_reindex.to_csv(locations.tables + 'Detected_spines_'+filename+'reindex.csv',index=False) 
@@ -780,13 +789,16 @@ def spine_and_dendrite_processing(image, labels, spine_summary, settings, locati
         all_filtered_spines_table.to_csv(locations.tables + 'Detected_spines_'+filename+'pre.csv',index=False)         
 
         #perform 2D spine refinement here Unet detecting spine neck and head
-
+        
         #use the spine_MIPs to measure spine area        
         label_areas = spine_MIPs[:, 1, :, :]
         spine_areas = np.sum(label_areas > 0, axis=(1, 2))
-        df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
         
-        df_spine_areas['label'] = all_filtered_spines_table['label'].values
+        spine_masks = label_areas > 0
+        spine_ids = np.nan_to_num(np.sum(label_areas * spine_masks, axis=(1, 2)) / np.sum(spine_masks, axis=(1, 2), where=spine_masks))
+
+        df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
+        df_spine_areas['label'] = spine_ids
         
         df_spine_areas.to_csv(locations.tables + 'Detected_spines_'+filename+'areas.csv',index=False) 
         
@@ -795,17 +807,6 @@ def spine_and_dendrite_processing(image, labels, spine_summary, settings, locati
         #all_filtered_spines_table.insert(7, 'spine_area', df_spine_areas['spine_area'])
         all_filtered_spines_table.insert(8, 'spine_area_um2', all_filtered_spines_table['spine_area'] * (settings.input_resXY **2))
         
-        ##add the averages to the summary        
-        #if 'avg_spine_area' not in spine_summary.columns:
-        #    spine_summary.insert(12, 'avg_spine_area', all_filtered_spines_table['spine_area'].mean())
-        #else:
-        #    spine_summary.at[spine_summary.index[-1], 'avg_spine_area'] = all_filtered_spines_table['spine_area'].mean()
-         
-        #if 'avg_spine_area_um2' not in spine_summary.columns:
-        #    spine_summary.insert(13, 'avg_spine_area_um2', all_filtered_spines_table['spine_area_um2'].mean())
-        #else:
-        #    spine_summary.at[spine_summary.index[-1], 'avg_spine_area_um2'] = all_filtered_spines_table['spine_area_um2'].mean()
-            
 
         
         #create summary
@@ -1037,9 +1038,14 @@ def analyze_spines_4D(settings, locations, log, logger):
             
             label_areas = spine_MIPs[:, 1, :, :]
             spine_areas = np.sum(label_areas > 0, axis=(1, 2))
-            df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
             
-            df_spine_areas['label'] = spine_table['label'].values
+            spine_masks = label_areas > 0
+            spine_ids = np.nan_to_num(np.sum(label_areas * spine_masks, axis=(1, 2)) / np.sum(spine_masks, axis=(1, 2), where=spine_masks))
+
+            df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
+            df_spine_areas['label'] = spine_ids
+            
+            #df_spine_areas['label'] = spine_table['label'].values
             
             df_spine_areas.to_csv(locations.tables + str(t)+ 'Detected_spines_areas.csv',index=False) 
             # Reindex df_spine_areas to match the index of spine_table
