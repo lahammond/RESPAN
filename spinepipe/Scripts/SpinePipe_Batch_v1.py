@@ -48,8 +48,10 @@ main.check_gpu()
 
 #Dataset Directories
 
-data_dirs = ["D:/Project_Data/SpinePipe/Testing/Spine_tracking/",
-             ] #,
+data_dirs = ["D:/Project_Data/SpinePipe/2024_Baptiste_Data/"]
+
+#data_dirs = ["D:/Project_Data/SpinePipe/Testing/Spine_tracking/"]
+ #            ] #,
             # "D:/Project_Data/SpineAnalysis/Testing/FastTest2"]
             #"D:/Project_Data/SpineAnalysis/1_Spine_Tracking_Datasets/Animal1/Segment1/"
 
@@ -94,18 +96,31 @@ for data_dir in data_dirs:
                  #%%
                 #Modify specific parameters and settings:    
                 settings.save_intermediate_data = True
-                settings.spine_roi_volume_size = 5 #4 in microns in x, y, z - approx 13px for 0.3 resolution data
+                settings.roi_volume_size = 2
+                settings.spine_roi_volume_size = 1 #4 in microns in x, y, z - approx 13px for 0.3 resolution data
                 settings.GPU_block_size = (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
                 settings.neuron_spine_size = (0.03,15)
-                settings.neuron_spine_dist = 4
-                settings.HistMatch = True
-                settings.Track = True
+                settings.neuron_spine_dist = 3
+                settings.min_dendrite_vol = 0.5
+                
+                settings.min_dendrite_vol = round(settings.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
+                settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in settings.neuron_spine_size] 
+                settings.neuron_spine_dist = round(settings.neuron_spine_dist / (settings.input_resXY),2)
+              
+                
+                
+                settings.HistMatch = False
+                settings.Track = False
                 settings.reg_method = "Elastic" #or "Elastic"
                 settings.erode_shape = (0.5,2,2)
-                settings.min_dendrite_vol = 15
+                
                 settings.image_restore = False
-                settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/spinepipe/Models/Dataset022_SpinesDendrites/"
-                settings.seg_model = ("nnUnet","")
+                settings.neuron_channel = 1
+                #settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/spinepipe/Models/Dataset022_SpinesDendrites/"
+                settings.neuron_seg_model_path = "D:/nnUnet/results/Dataset816_SpinningDisk_SpinesDendritesSoma_Isotropic/"
+                #settings.seg_model = ("nnUnet","")
+                settings.Vaa3d = True
+                settings.analysis_method =  "Whole Neuron" # "Dendrite Specific", or "Whole Neuron" 
                 
             
                 logger.info("Processing folder: "+subfolder_path)

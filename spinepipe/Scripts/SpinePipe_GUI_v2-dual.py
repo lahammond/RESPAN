@@ -193,7 +193,7 @@ class AnalysisWorker(QThread):
                     
                     
                            
-                    if os.path.exists(settings.nnUnet_conda_path+'/envs/'+settings.nnUnet_env+'1/'):
+                    if os.path.exists(settings.nnUnet_conda_path+'/envs/'+settings.nnUnet_env+'/'):
         
                         log = imgan.restore_and_segment(settings, locations, self.logger)
                 
@@ -279,6 +279,7 @@ class ValidationWorker(QThread):
             settings.min_dendrite_vol = round(self.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
             settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in self.spine_vol] 
             settings.neuron_spine_dist = round(self.spine_dist / (settings.input_resXY),2)
+            #settings.Track = False
             
             
             self.logger.info("Processing folder: "+self.analysis_output)

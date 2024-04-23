@@ -184,7 +184,7 @@ def nnunet_create_labels(inputdir, settings, locations, logger):
                                     settings.input_resXY/settings.model_resXY)
         #settings.inverse_scaling_factors = tuple(1/np.array(settings.scaling_factors))
         
-        logger.info(f" Scaling factors: Z = {settings.scaling_factors[0]} Y = {settings.scaling_factors[1]} X = {settings.scaling_factors[2]} ")
+        logger.info(f" Scaling factors: Z = {round(settings.scaling_factors[0],2)} Y = {round(settings.scaling_factors[1],2)} X = {round(settings.scaling_factors[2],2)} ")
     
     #data can be raw data OR restored data so check channels
     
@@ -473,7 +473,7 @@ def analyze_spines(settings, locations, log, logger):
         logger.info(f"  Raw shape: {image.shape} & Labels shape: {labels.shape}")
         
         #Unpad if padded # later update - these can be included in Unet processing stage to simplify!
-        if settings.padding_req[file] == 1 and settings.prev_labels == False:
+        if settings.padding_req[file] == 1 and settings.prev_labels == False and settings.original_shape[0] != None:
             labels = labels[2:-2, :, :]
 
             tifffile.imwrite(locations.labels + label_files[file], labels.astype(np.uint8), imagej=True, photometric='minisblack',
@@ -481,8 +481,9 @@ def analyze_spines(settings, locations, log, logger):
                     resolution=(settings.input_resXY, settings.input_resXY))
         
         
-        # rescale labels back up if required      
-        if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY and settings.prev_labels == False:
+        # rescale labels back up if required    
+
+        if settings.original_shape[0] != None and settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY and settings.prev_labels == False:
             logger.info(f"  orignal settings shape: {settings.original_shape[file]}")
             labels = resize(labels, settings.original_shape[file], order=0, mode='constant', preserve_range=True, anti_aliasing=None)
             logger.info(f"  labels resized: {labels.shape}")
@@ -587,15 +588,15 @@ def spine_and_whole_neuron_processing(image, labels, spine_summary, settings, lo
     
         #Measurements
         #Create 4D Labels
-        tifffile.imwrite(locations.tables + 'Detected_spines.tif', spine_labels.astype(np.uint16), imagej=True, photometric='minisblack',
-                metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
+        #tifffile.imwrite(locations.tables + 'Detected_spines.tif', spine_labels.astype(np.uint16), imagej=True, photometric='minisblack',
+        #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
         
         spine_table, spines_filtered = spine_measurementsV2(image, spine_labels, 1, 0, settings.neuron_channel, dendrite_distance, soma_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
         #spine_table, spines_filtered = spine_measurementsV1(image, spine_labels, settings.neuron_channel, dendrite_distance, soma_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
         
         #Create 4D Labels
-        tifffile.imwrite(locations.tables + 'Detected_spines_filtered.tif', spines_filtered.astype(np.uint16), imagej=True, photometric='minisblack',
-                metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})                                                  #soma_mask, soma_distance, )
+        #tifffile.imwrite(locations.tables + 'Detected_spines_filtered.tif', spines_filtered.astype(np.uint16), imagej=True, photometric='minisblack',
+        #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})                                                  #soma_mask, soma_distance, )
         
         dendrite_length = np.sum(skeleton == 1)
         dendrite_volume = np.sum(dendrites ==1)
@@ -612,6 +613,7 @@ def spine_and_whole_neuron_processing(image, labels, spine_summary, settings, lo
             
             logger.info("   Creating spine arrays on GPU...")
             #Extract MIPs for each spine
+        
             spine_MIPs, spine_slices, spine_vols = create_spine_arrays_in_blocks(image, labels, spines_filtered, spine_table, settings.roi_volume_size, settings, locations, filename,  logger, settings.GPU_block_size)
             
                 
@@ -624,6 +626,7 @@ def spine_and_whole_neuron_processing(image, labels, spine_summary, settings, lo
 
             df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
             df_spine_areas['label'] = spine_ids
+            
             
             
             
@@ -786,7 +789,7 @@ def spine_and_dendrite_processing(image, labels, spine_summary, settings, locati
         #Extract MIPs for each spine
         spine_MIPs, spine_slices, spine_vols = create_spine_arrays_in_blocks(image, labels, all_filtered_spines, all_filtered_spines_table, settings.roi_volume_size, settings, locations, filename,  logger, settings.GPU_block_size)
 
-        all_filtered_spines_table.to_csv(locations.tables + 'Detected_spines_'+filename+'pre.csv',index=False)         
+        #all_filtered_spines_table.to_csv(locations.tables + 'Detected_spines_'+filename+'pre.csv',index=False)         
 
         #perform 2D spine refinement here Unet detecting spine neck and head
         
@@ -800,7 +803,7 @@ def spine_and_dendrite_processing(image, labels, spine_summary, settings, locati
         df_spine_areas = pd.DataFrame({'spine_area': spine_areas})
         df_spine_areas['label'] = spine_ids
         
-        df_spine_areas.to_csv(locations.tables + 'Detected_spines_'+filename+'areas.csv',index=False) 
+        #df_spine_areas.to_csv(locations.tables + 'Detected_spines_'+filename+'areas.csv',index=False) 
         
         all_filtered_spines_table = all_filtered_spines_table.merge(df_spine_areas, on='label', how='left')
         all_filtered_spines_table.insert(7, 'spine_area', all_filtered_spines_table.pop('spine_area')) #pops and inserts 
@@ -1349,8 +1352,7 @@ def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite
     main_table.rename(columns={'centroid-0':'z'}, inplace=True)
     main_table.rename(columns={'centroid-1':'y'}, inplace=True)
     main_table.rename(columns={'centroid-2':'x'}, inplace=True)
-    
-    
+   
     
     # measure remaining channels
     for ch in range(image.shape[1]-1):
@@ -1367,13 +1369,14 @@ def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite
         #rename mean intensity
         table.rename(columns={'mean_intensity':'C'+str(ch+2)+'_mean_int'}, inplace=True)
         table.rename(columns={'max_intensity':'C'+str(ch+2)+'_max_int'}, inplace=True)
+        
         Mean = table['C'+str(ch+2)+'_mean_int']
         Max = table['C'+str(ch+2)+'_max_int']
         
         #combine columns with main table
         main_table = main_table.join(Mean)
         main_table = main_table.join(Max)
-
+        
 
     #measure distance to dendrite
     logger.info("    Measuring distances to dendrite...")
@@ -1477,9 +1480,15 @@ def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite
     
     #logger.info(f"  filtered table before image filter = {len(filtered_table)}. ")
     #logger.info(f"  image labels before filter = {np.max(labels)}.")
+    #integrated_density
+    filtered_table['C1_int_density'] = filtered_table['spine_vol_um3'] * filtered_table['C1_mean_int']
     
+    # measure remaining channels
+    for ch in range(image.shape[1]-1):
+        filtered_table['C'+str(ch+2)+'_int_density'] = filtered_table['spine_vol_um3'] * filtered_table['C'+str(ch+2)+'_mean_int']
    
-    
+    #Drop unwanted columns
+    filtered_table = filtered_table.drop(['spine_vol','spine_length', 'dist_to_dendrite', 'dist_to_soma'], axis=1)
     logger.info(f"    After filtering {len(filtered_table)} spines were analyzed from a total of {len(main_table)}")
    
   
@@ -1514,8 +1523,9 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
     merge_mip_list = [] #image MIP
     merge_slice_list = [] # image slize
     merge_vol_list = []
-    #mip_label_filtered_list = [] #Mip filtered by label - we don't need this
-    #slice_before_mip_list = [] #slice filtered by label - we don't need this either
+    
+    merge_masked_mip_list = [] #Mip filtered by label - we don't need this
+    merge_masked_slice_list = [] #slice filtered by label - we don't need this either
     
     smallest_axis = np.argmin(image.shape)
     image = np.moveaxis(image, smallest_axis, -1)
@@ -1563,6 +1573,9 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
         #clear outside spine for spine label only - leave dendrite, soma
         label_vol[(label_vol == 1) & (spine_mask == 0)] = 0
 
+        #mask the spine image
+        masked_image_vol = image_vol * spine_mask
+        
         #
         
         # Extract 2D slice at position z
@@ -1570,6 +1583,7 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
         spine_slice = spine_vol[volume_size_z // 2, :, :, :]
         label_slice = label_vol[volume_size_z // 2, :, :, :]
 
+        masked_image_slice = masked_image_vol[volume_size_z // 2, :, :, :]
         #taking out the masked arrays - I don't think we need these        
         
         #why expanding -taking htis out temporarily
@@ -1583,28 +1597,40 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
 
         # Compute MIPs - this could be done by merging then mip but leave as this for now
         image_mip = cp.max(image_vol, axis=0)
-        image_mip = image_mip[cp.newaxis, :, :] #expand to add label
+        ##image_mip = image_mip[cp.newaxis, :, :] #expand to add label
         spine_mip=cp.max(spine_vol, axis = 0)
-        spine_mip = spine_mip[cp.newaxis, :, :] # *65535#expand to add label
+        ##spine_mip = spine_mip[cp.newaxis, :, :] # *65535#expand to add label
         label_mip=cp.max(label_vol, axis = 0)
-        label_mip = label_mip[cp.newaxis, :, :]
+        ##label_mip = label_mip[cp.newaxis, :, :]
+        
+        masked_image_mip = cp.max(masked_image_vol, axis=0)
         
         #logger.info(f' image mip {image_mip.shape} ,spine mip.shape {spine_mip.shape} label mip shape {label_mip.shape} ')
+
+        merge_mip = cp.concatenate((image_mip, spine_mip, label_mip), axis=-1)
         
-        merge_mip = cp.concatenate((image_mip, spine_mip, label_mip), axis=0)
+        merge_masked_mip = cp.concatenate((masked_image_mip, spine_mip, label_mip), axis=-1)
+
         
         merge_mip_list.append(merge_mip.get())
         
-        image_slice = image_slice[cp.newaxis, :, :]#expand to add label
-        spine_slice = spine_slice[cp.newaxis, :, :]
-        label_slice = label_slice[cp.newaxis, :, :]
+        merge_masked_mip_list.append(merge_masked_mip.get())
+        
+                
+        ##image_slice = image_slice[cp.newaxis, :, :]#expand to add label
+        ##spine_slice = spine_slice[cp.newaxis, :, :]
+        ##label_slice = label_slice[cp.newaxis, :, :]
+
         
         #logger.info(f' image slice {image_slice.shape} ,spine slice.shape {spine_slice.shape} label slice shape {label_slice.shape} ')
         
-        merge_slice = cp.concatenate((image_slice, spine_slice, label_slice), axis=0)
+        merge_slice = cp.concatenate((image_slice, spine_slice, label_slice), axis=-1)
+        
+        merge_masked_slice = cp.concatenate((masked_image_slice, spine_slice, label_slice), axis=-1)
         
         merge_slice_list.append(merge_slice.get())
-        
+  
+        merge_masked_slice_list.append(merge_masked_slice.get())
         # now add Label slice to image slice
         
         #mip_label_filtered = cp.max(extracted_volume_label_filtered, axis=0)
@@ -1622,32 +1648,46 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
         #Could potentially add axis to volumes at beginning, then do all the mips w/o expansion - would be cleaner merge on axis 1 instead of 0
         # ie.. merge vol then create MIP and slice- come back and clean up if time...
         #CZYX
-        image_vol = cp.expand_dims(image_vol, axis=0)
+        
+
+        
+        ##image_vol = cp.expand_dims(image_vol, axis=0)
         #image_vol = image_vol[cp.newaxis, :, :, :]
-        spine_vol = cp.expand_dims(spine_vol, axis=0)
+        ##spine_vol = cp.expand_dims(spine_vol, axis=0)
         #spine_vol = image_vol[cp.newaxis, :, :, :, :]
-        label_vol = cp.expand_dims(label_vol, axis=0)
+        ##label_vol = cp.expand_dims(label_vol, axis=0)
         
         #logger.info(f' image{image_vol.shape} ,spine_vol.shape {spine_vol.shape}labelvol shape {label_vol.shape} ')
         
-        merge_vol = cp.concatenate((image_vol, spine_vol, label_vol), axis=0)
+
+        
+        merge_vol = cp.concatenate((image_vol, spine_vol, label_vol), axis=-1)
         merge_vol_list.append(merge_vol.get())
+        
+       
                 
         
-        del image_vol, label_vol, spine_vol, image_slice, spine_slice, label_slice, image_mip, spine_mip, label_mip, merge_vol
+        del image_vol, label_vol, spine_vol, image_slice, spine_slice, label_slice, image_mip, spine_mip, label_mip, merge_vol, masked_image_mip, masked_image_slice, masked_image_vol
         cp.cuda.Stream.null.synchronize()
         gc.collect()
 
     mip_array = np.stack(merge_mip_list)
+    
+    masked_mip_array = np.stack(merge_masked_mip_list)
+    
     #mip_array = np.moveaxis(mip_array, 3, 1)
-    mip_array = mip_array.squeeze(axis=-1)
+    ##mip_array = mip_array.squeeze(axis=0)
     
     slice_array = np.stack(merge_slice_list)
+    
+    masked_slice_array = np.stack(merge_masked_slice_list)
+    
     #slice_z_array = np.moveaxis(slice_z_array, 3, 1)
-    slice_array = slice_array.squeeze(axis=-1)
+    ##slice_array = slice_array.squeeze(axis=0)
     
     vol_array = np.stack(merge_vol_list)
-    vol_array = vol_array.squeeze(axis=-1)
+    ##vol_array = vol_array.squeeze(axis=0)
+    
     
     #mip_label_filtered_array = np.stack(mip_label_filtered_list)
     #mip_label_filtered_array = np.moveaxis(mip_label_filtered_array, 3, 1)
@@ -1657,7 +1697,7 @@ def create_filtered_and_unfiltered_spine_arrays_cupy(image, spines_filtered, lab
     #slice_before_mip_array = np.moveaxis(slice_before_mip_array, 3, 1)
     #slice_before_mip_array = slice_before_mip_array.squeeze(axis=-1)
     
-    return mip_array, slice_array, vol_array
+    return mip_array, slice_array, masked_mip_array, masked_slice_array, vol_array
 
 def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_size, settings, locations, file, logger, block_size=(50, 300, 300)):
     #suppress warning about subtracting from table without copying
@@ -1667,8 +1707,12 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
     smallest_axis = np.argmin(image.shape)
     image = np.moveaxis(image, smallest_axis, -1)
     
+
+    
     mip_list = []
     slice_list = []
+    masked_mip_list = []
+    masked_slice_list = []
     vol_list = []
 
     block_size_z, block_size_y, block_size_x = block_size
@@ -1717,11 +1761,13 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
                     block_table.loc[:, 'y'] = block_table['y'] - padded_y_start
                     block_table.loc[:, 'x'] = block_table['x'] - padded_x_start
                     
-                    block_mip, block_slice, block_vol = create_filtered_and_unfiltered_spine_arrays_cupy(
+                    block_mip, block_slice, block_masked_mip, block_masked_slice, block_vol = create_filtered_and_unfiltered_spine_arrays_cupy(
                         block_image, block_spines_filtered, block_labels, block_table, volume_size, settings, locations, file, logger
                     )
                     mip_list.extend(block_mip)
                     slice_list.extend(block_slice)
+                    masked_mip_list.extend(block_masked_mip)
+                    masked_slice_list.extend(block_masked_slice)
                     vol_list.extend(block_vol)
                     gc.collect()                  
         
@@ -1730,19 +1776,32 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
 
     #print(mip_list)
     # Convert lists to arrays and concatenate
-    mip_array = np.stack(mip_list, axis = 0)
-    slice_array = np.stack(slice_list, axis=0)
-    vol_array = np.stack(vol_list, axis=0)
+    mip_array = np.stack(mip_list, axis = 0).transpose(0, 3, 1, 2)
+    slice_array = np.stack(slice_list, axis=0).transpose(0, 3, 1, 2)
+    masked_mip_array = np.stack(masked_mip_list, axis = 0).transpose(0, 3, 1, 2)
+    masked_slice_array = np.stack(masked_slice_list, axis=0).transpose(0, 3, 1, 2)
     
-    vol_array = np.transpose(vol_array, (0, 2, 1, 3, 4))
+    
+    vol_array = np.stack(vol_list, axis=0).transpose(0, 1, 4, 2, 3)
+    print(vol_array.shape)
+    
+    #vol_array = np.transpose(vol_array, (0, 2, 1, 3, 4))
     #mip_label_filtered_array = np.stack(mip_label_filtered_list, axis=0)
     #slice_before_mip_array = np.stack(slice_before_mip_list, axis=0)
+    #print(mip_array.shape)
     
     #logger.info(f' {mip_array.shape}')
     tifffile.imwrite(locations.arrays+"/Spine_MIPs_"+file, mip_array.astype(np.uint16), imagej=True, photometric='minisblack',
             metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX', 'mode': 'composite'},
             resolution=(1/settings.input_resXY, 1/settings.input_resXY))
     tifffile.imwrite(locations.arrays + "/Spine_slices_" + file, slice_array.astype(np.uint16), imagej=True, photometric='minisblack',
+                     metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX','mode': 'composite'},
+                     resolution=(1/settings.input_resXY, 1/settings.input_resXY))
+    
+    tifffile.imwrite(locations.arrays+"/Spine_masked_MIPs_"+file, masked_mip_array.astype(np.uint16), imagej=True, photometric='minisblack',
+            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX', 'mode': 'composite'},
+            resolution=(1/settings.input_resXY, 1/settings.input_resXY))
+    tifffile.imwrite(locations.arrays + "/Spine_masked_slices_" + file, masked_slice_array.astype(np.uint16), imagej=True, photometric='minisblack',
                      metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX','mode': 'composite'},
                      resolution=(1/settings.input_resXY, 1/settings.input_resXY))
     tifffile.imwrite(locations.arrays + "/Spine_vols_" + file, vol_array.astype(np.uint16), imagej=True, photometric='minisblack',
