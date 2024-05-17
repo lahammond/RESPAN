@@ -48,7 +48,7 @@ main.check_gpu()
 
 #Dataset Directories
 
-data_dirs = ["D:/Project_Data/SpinePipe/2024_Baptiste_Data/"]
+data_dirs = ["D:/Project_Data/SpinePipe/Figure5_SBG/"]
 
 #data_dirs = ["D:/Project_Data/SpinePipe/Testing/Spine_tracking/"]
  #            ] #,
@@ -95,6 +95,7 @@ for data_dir in data_dirs:
                 settings, locations = main.initialize_spinepipe(subfolder_path)
                  #%%
                 #Modify specific parameters and settings:    
+                settings.save_validation = False
                 settings.save_intermediate_data = True
                 settings.roi_volume_size = 2
                 settings.spine_roi_volume_size = 1 #4 in microns in x, y, z - approx 13px for 0.3 resolution data
@@ -117,7 +118,9 @@ for data_dir in data_dirs:
                 settings.image_restore = False
                 settings.neuron_channel = 1
                 #settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/spinepipe/Models/Dataset022_SpinesDendrites/"
-                settings.neuron_seg_model_path = "D:/nnUnet/results/Dataset816_SpinningDisk_SpinesDendritesSoma_Isotropic/"
+                #settings.neuron_seg_model_path = "D:/nnUnet/results/Dataset816_SpinningDisk_SpinesDendritesSoma_Isotropic/"
+                settings.neuron_seg_model_path = "D:/nnUnet/results/Dataset818_Aleks_Baptiste_mixedscale_SDC_SDCiso_AiryscaledSDC_20240425_compress/"
+                
                 #settings.seg_model = ("nnUnet","")
                 settings.Vaa3d = True
                 settings.analysis_method =  "Whole Neuron" # "Dendrite Specific", or "Whole Neuron" 

@@ -78,6 +78,7 @@ def create_dirs(Settings, Locations):
     create_dir(Locations.arrays)
         
     create_dir(Locations.MIPs)
+    create_dir(Locations.Vols)
     create_dir(Locations.swcs)
     
     
@@ -130,6 +131,7 @@ class Create_Locations():
         self.labels =  data_dir+"Validation_Data/Segmentation_Labels/"
         self.restored =  data_dir+"Validation_Data/Restored_Images/"
         self.MIPs =  data_dir+"Validation_Data/Validation_MIPs/"
+        self.Vols =  data_dir+"Validation_Data/Validation_Vols/"
         self.tables = data_dir+"Tables/"
         self.plots = data_dir+"Plots/"
         self.arrays = data_dir+"Spine_Arrays/"

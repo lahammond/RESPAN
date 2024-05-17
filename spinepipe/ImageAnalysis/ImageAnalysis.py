@@ -611,6 +611,9 @@ def spine_and_whole_neuron_processing(image, labels, spine_summary, settings, lo
              
             neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+filename, 'float', settings)
             
+            if settings.save_validation == True:
+                create_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.Vols+filename, 'float', settings)
+            
             logger.info("   Creating spine arrays on GPU...")
             #Extract MIPs for each spine
         
@@ -1148,6 +1151,29 @@ def create_mip_and_save_multichannel_tiff(images_3d, filename, bitdepth, setting
 
     # Return the merged 2D multi-channel image as a numpy array
     return multichannel_image
+
+def create_and_save_multichannel_tiff(images_3d, filename, bitdepth, settings):
+    """
+    Create TIF from a list of 3D images, merge them into a image,
+    save as a 16-bit TIFF file.
+
+    Args:
+        images_3d (list of numpy.ndarray): List of 3D numpy arrays representing input images.
+        filename (str): Filename for the output TIFF file.
+
+    Returns:
+        none
+    """
+    
+    # Convert the list of images to a single multichannel image
+    multichannel_image = np.stack(images_3d, axis=1)
+    
+    # Convert the multichannel image to 16-bit
+    multichannel_image = multichannel_image.astype(np.uint16)
+        
+    tifffile.imwrite(filename, multichannel_image, imagej=True, photometric='minisblack',
+            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX'})
+
 
 def create_mip_and_save_multichannel_tiff_4d(images_3d, filename, bitdepth, settings):
     """
