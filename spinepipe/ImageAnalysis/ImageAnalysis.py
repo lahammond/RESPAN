@@ -611,7 +611,7 @@ def spine_and_whole_neuron_processing(image, labels, spine_summary, settings, lo
              
             neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+filename, 'float', settings)
             
-            if settings.save_validation == True:
+            if settings.save_val_data == True:
                 create_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.Vols+filename, 'float', settings)
             
             logger.info("   Creating spine arrays on GPU...")
