@@ -1,0 +1,56 @@
+Parameters: #Note: Overwritten by GUI by default - can be used for batch processing datasets with different parameters
+    input_resXY: 0.102 #raw data resolution
+    input_resZ: 1 #raw data resolution
+    model_resXY: 0.102 #resolution of trained model
+    model_resZ: 1 #resolution of trained model
+
+Analysis:
+    tiles_for_prediction: (2,3,3) #Setting used to break image into tiles for inference on GPU
+    roi_volume_size: 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
+    GPU_block_size: (150,500,500) #dims used for processing images in block for cell extraction. Reduce if recieving out of memory errors
+   
+    validation_format: tif #    jpg mips for quick val
+    validation_scale: (1,1) #output scaling for validation data e.g. (2,2) for half scale
+    validation_jpeg_comp: 100    #100% quality default
+
+    erode_shape: (0.5,2,2)
+    remove_touching_boarders: False
+    
+    additional_logging: False
+
+Vaa3D:
+    path: C:/Program Files/Vaa3D_1_1_4 windows/Vaa3D-x.exe
+
+# CARE SETTINGS
+
+Channel1:
+    restore: True # Restore image data first using image restoration model
+    rest_model_path: D:/Dropbox/Github/spine-analysis/spinepipe\Models/Restoration/100xSil_xy65nm_z150nm_BFP_dendrite_decon_v1/   #Path to restoration model. Else None
+    rest_type: ("care", 100)    #Type and backbone type if using tf models. If "care", follow by a threshold to remove low intensities and potential artifacts.
+Channel2:
+    restore: False # Restore image data first using image restoration model
+    rest_model_path: None   #Path to restoration model"
+    rest_type: ("care", 100)    #Type and backbone type if using tf models. If "care", follow by a threshold to remove low intensities and potential artifacts.
+Channel3:
+    restore: False # Restore image data first using image restoration model
+    rest_model_path: None   #Path to restoration model"
+    rest_type: ("care", 100)    #Type and backbone type if using tf models. If "care", follow by a threshold to remove low intensities and potential artifacts.
+Channel4:
+    restore: False # Restore image data first using image restoration model
+    rest_model_path: None   #Path to restoration model"
+    rest_type: ("care", 100)    #Type and backbone type if using tf models. If "care", follow by a threshold to remove low intensities and potential artifacts.
+
+# SELFNET SETTINGS
+
+SelfNet:
+    model_path: D:\Project_Data\RESPAN\_Axial_restoration\SelfnetV3\raw_data\checkpoint\saved_models\deblur_net_60_1600.pkl
+
+
+# SPINE REFINEMENT SETTINGS
+
+Refinement:
+    model_path: D:\nnUnet\results\Dataset888_RESPAN_2nd_pass_spine_arrays
+    model_resXY: 0.065 #resolution of trained 2ndpass model
+    model_resZ: 0.065 #resolution of trained 2ndpass model
+
+

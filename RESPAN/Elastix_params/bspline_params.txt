@@ -1,0 +1,95 @@
+// Parameter file for B-spline registration of spines and dendrites
+
+(FixedInternalImagePixelType "float")
+(MovingInternalImagePixelType "float")
+(UseDirectionCosines "true")
+
+// Main Components
+
+//(Registration "MultiResolutionRegistration")
+(Registration "MultiMetricMultiResolutionRegistration")
+
+(Interpolator "BSplineInterpolator")
+(ResampleInterpolator "FinalBSplineInterpolator")
+(Resampler "DefaultResampler")
+
+(FixedImagePyramid "FixedSmoothingImagePyramid")
+(MovingImagePyramid "MovingSmoothingImagePyramid")
+
+
+// METRICS
+
+//(Metric "AdvancedMattesMutualInformation")
+(Metric "AdvancedMattesMutualInformation" "TransformBendingEnergyPenalty")
+(Metric0Weight 1.0)
+(Metric1Weight 0.5)
+
+// Transformation
+
+(Transform "RecursiveBSplineTransform")
+//(FinalGridSpacingInVoxels 50 50 10) //provided good alignment to dendrite
+(FinalGridSpacingInVoxels 30 30 10)
+(HowToCombineTransforms "Compose")
+
+
+// Similarity measure
+(NumberOfHistogramBins 64)
+
+// Multiresolution
+(NumberOfResolutions 3)
+(ImagePyramidSchedule 4 4 4 2 2 2 1 1 1 1)
+
+// Optimizer
+(MaximumNumberOfIterations 400)
+(Optimizer "AdaptiveStochasticGradientDescent")
+(ASGDParameterEstimationMethod "Original")
+//(ASGDParameterEstimationMethod "DisplacementDistribution")
+(AutomaticParameterEstimation "true")
+(UseAdaptiveStepSizes "true")
+
+
+// Image sampling
+(NumberOfSpatialSamples 10000)
+(NewSamplesEveryIteration "true")
+(ImageSampler "RandomSparseMask")
+(SampleRegionSize 15 15 7)
+(MaximumNumberOfSamplingAttempts 5000)
+(RequiredRatioOfValidSamples 0.05)
+
+// Interpolation and Resampling
+//Reduced to prevent overfitting
+//(BSplineInterpolationOrder 3)
+(BSplineInterpolationOrder 2)
+
+(FinalBSplineInterpolationOrder 3)
+//(FinalResultBSplineIntpolationOrder 1)
+//(UseClippingForBSplineInterpolator "true")
+//(ClippingThreshold 65535)
+(DefaultPixelValue 0)
+
+// Output
+(WriteResultImage "true")
+(ResultImagePixelType "short")
+(CompressResultImage "false")
+(ResultImageFormat "tif")
+
+// Intensity handling
+(UseDifferentiableOverlap "true")
+(BSplineTransformSplineOrder 3)
+(FixedLimitRangeRatio 0.0)
+(MovingLimitRangeRatio 0.0)
+(ImageKernelVariance 0.5)
+
+//(NormalizeImageIntensity "true")
+//(FixedIntensityNormalization "true")
+//(MovingIntensityNormalization "true")
+//(FixedMaskMinIntensity 0)
+//(FixedMaskMaxIntensity 65535)
+//(MovingMaskMinIntensity 0)
+//(MovingMaskMaxIntensity 65535)
+
+
+// Mask-specific parameters
+(UseMask "true")
+(ErodeMask "false")
+

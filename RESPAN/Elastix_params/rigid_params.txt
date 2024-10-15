@@ -1,0 +1,57 @@
+// Parameter file for rigid spine and dendrite registration
+
+(FixedInternalImagePixelType "float")
+(MovingInternalImagePixelType "float")
+(UseDirectionCosines "true")
+
+// Main Components
+(Registration "MultiResolutionRegistration")
+(Interpolator "BSplineInterpolator")
+(ResampleInterpolator "FinalBSplineInterpolator")
+(Resampler "DefaultResampler")
+(FixedImagePyramid "FixedSmoothingImagePyramid")
+(MovingImagePyramid "MovingSmoothingImagePyramid")
+(Optimizer "AdaptiveStochasticGradientDescent")
+(Transform "EulerTransform")
+(Metric "AdvancedMattesMutualInformation")
+
+// Transformation
+(AutomaticTransformInitialization "true")
+(AutomaticScalesEstimation "true")
+(HowToCombineTransforms "Compose")
+
+// Similarity measure
+(NumberOfHistogramBins 32)
+
+// Multiresolution
+(NumberOfResolutions 4)
+
+// Optimizer
+(MaximumNumberOfIterations 500)
+
+// Image sampling
+(ImageSampler "RandomSparseMask")
+(NumberOfSpatialSamples 5000)
+(NewSamplesEveryIteration "true")
+(UseRandomSampleRegion "false")
+(MaximumNumberOfSamplingAttempts 5000)
+(RequiredRatioOfValidSamples 0.05)
+
+// Interpolation and Resampling
+(BSplineInterpolationOrder 1)
+(FinalBSplineInterpolationOrder 3)
+(DefaultPixelValue 0)
+
+// Mask
+(ErodeMask "false")
+(UseMask "true")
+
+// Result image formation
+(WriteResultImage "true")
+(ResultImagePixelType "float")
+(ResultImageFormat "tif")
+
+// Additional parameters
+(NumberOfSamplesForExactGradient 100000)
+(AutomaticParameterEstimation "true")
+(UseAdaptiveStepSizes "true")

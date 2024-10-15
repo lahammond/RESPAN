@@ -1,0 +1,27 @@
+
+cpython:S125"Remove this commented out code.(­™Áæ8™»Æã†2J$3fc0488e-039b-47d7-9b61-06b8ac4f395b
+cpython:S125<"Remove this commented out code.(…Óµ•8š»Æã†2J$11bab04f-877c-4e11-ad91-41c261e5c3ce
+zpython:S1172F"0Remove the unused function parameter "Settings".(‚”ä ùÿÿÿÿ8š»Æã†2J$6058eac4-bb5e-4b9b-805a-05eaf4b11c29
+žpython:S117F"URename this parameter "Locations" to match the regular expression ^[_a-z][a-z0-9_]*$.(‚”ä ùÿÿÿÿ8š»Æã†2J$ec41493d-4982-435b-919b-20807153bb2d
+python:S117F"TRename this parameter "Settings" to match the regular expression ^[_a-z][a-z0-9_]*$.(‚”ä ùÿÿÿÿ8š»Æã†2J$629381d2-1f9e-457c-a4d5-e829f75a10d1
+python:S117X"ZRename this local variable "Locations" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÙÆÍ`8š»Æã†2J$3e07f0fa-2287-4a11-bd06-c8c1eba794d7
+¢python:S117W"YRename this local variable "Settings" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÉÐÀ»øÿÿÿÿ8š»Æã†2J$568e7ed9-ec0b-428e-b53b-31f2784c5115
+œpython:S1542U"WRename function "initialize_RESPAN" to match the regular expression ^[a-z_][a-z0-9_]*$.(Ú•¦8š»Æã†2J$3132a433-3435-47a0-8cc6-9edcd64f11d5
+£python:S117`"ZRename this local variable "Locations" to match the regular expression ^[_a-z][a-z0-9_]*$.(¼Õ÷Óÿÿÿÿÿ8š»Æã†2J$023f412f-2c77-476c-b6a2-5e45ebf0e200
+¢python:S117_"YRename this local variable "Settings" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÉÐÀ»øÿÿÿÿ8š»Æã†2J$df8f46f2-9261-46da-94ac-a608fe6b5809
+¬python:S1542]"bRename function "initialize_RESPAN_validation" to match the regular expression ^[a-z_][a-z0-9_]*$.(ÐŽ–þýÿÿÿÿ8š»Æã†2J$05a07817-85c0-4c73-99a6-edd920a91e4c
+‘python:S116†"LRename this field "Vols" to match the regular expression ^[_a-z][_a-z0-9]*$.(ÀÿŠÆ8š»Æã†2J$f4956996-1a79-4332-a580-07b99bb7ce9a
+‘python:S116…"LRename this field "MIPs" to match the regular expression ^[_a-z][_a-z0-9]*$.(è­¸°8š»Æã†2J$45062484-70b9-434f-a31c-b7d97a74b35d
+žpython:S116Š"TRename this field "nnUnet_input" to match the regular expression ^[_a-z][_a-z0-9]*$.(”úñþøÿÿÿÿ8š»Æã†2J$23329bc3-3a8b-428b-80d8-34197582d790
+³python:S101"jRename class "Create_Locations" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(•Ûýòùÿÿÿÿ8š»Æã†2J$2f650240-8c15-4c29-ba03-5853261feec8
+–python:S116¼"RRename this field "nnUnet_env" to match the regular expression ^[_a-z][_a-z0-9]*$.(ŽàÀ8š»Æã†2J$e327df6f-b1d2-41cf-8d76-fcd669634b26
+›python:S116¾"QRename this field "Vaa3Dpath" to match the regular expression ^[_a-z][_a-z0-9]*$.(ÂØ½®ùÿÿÿÿ8š»Æã†2J$4c57b946-e5cc-45f5-8637-1fffa196df70
+—python:S116ž"RRename this field "model_resZ" to match the regular expression ^[_a-z][_a-z0-9]*$.(³†Éœ8š»Æã†2J$2ea707e0-dc87-4f37-b82f-55ce1fc83eec
+œpython:S116œ"RRename this field "input_resZ" to match the regular expression ^[_a-z][_a-z0-9]*$.(úžúþüÿÿÿÿ8š»Æã†2J$77a2d95f-fd5e-48d2-b003-0e4734ce8b64
+˜python:S116›"SRename this field "input_resXY" to match the regular expression ^[_a-z][_a-z0-9]*$.(¬ñËð8š»Æã†2J$4e25490a-a0cb-4866-874a-d6e91f3f7eb9
+žpython:S116»"YRename this field "nnUnet_conda_path" to match the regular expression ^[_a-z][_a-z0-9]*$.(ìóû8š»Æã†2J$39aa494b-a7df-4375-80b0-fbd291eab2e7
+˜python:S116"SRename this field "model_resXY" to match the regular expression ^[_a-z][_a-z0-9]*$.(ßëŸ÷8š»Æã†2J$77bce009-2fc9-446c-a52e-ddcfe72911f8
+python:S116º"SRename this field "nnUnet_type" to match the regular expression ^[_a-z][_a-z0-9]*$.(ëÝùåøÿÿÿÿ8š»Æã†2J$bd518f7c-e4e7-4a82-a746-b6e3f0dc2392
+›python:S116¢"VRename this field "GPU_block_size" to match the regular expression ^[_a-z][_a-z0-9]*$.(ºÓÙ—8š»Æã†2J$6d46f16b-5b30-4ae6-bb04-dd9ebb3d0d66
+®python:S101”"iRename class "Create_Settings" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(Ãÿ¼‹8š»Æã†2J$8c1f9792-072c-41f3-95b9-b57906c3f773
+dpython:S125˜"Remove this commented out code.(Òè“í8›»Æã†2J$b5a31c9a-2b2f-4022-92c2-e312ca1e6d6c

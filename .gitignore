@@ -1,9 +1,12 @@
-/spinepipe/Models
-/spinepipe/Archive
-/spinepipe/last_dir.pickle
-/spinepipe/last_dir2.pickle
-/spinepipe/last_dir3.pickle
-/spinepipe/Scripts/build
-/spinepipe/Scripts/dist
-/spinepipe/Dist
+/RESPAN/Models
+/RESPAN/Archive
+/RESPAN/last_dir.pickle
+/RESPAN/last_dir2.pickle
+/RESPAN/last_dir3.pickle
+/RESPAN/Scripts/build
+/RESPAN/Scripts/dist
+/RESPAN/Dist
+/RESPAN/Build
+/RESPAN/External_Scripts
+
 

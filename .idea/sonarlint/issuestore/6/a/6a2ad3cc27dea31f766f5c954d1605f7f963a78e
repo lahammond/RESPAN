@@ -1,0 +1,146 @@
+
+lpython:S1192Ž	"LDefine a constant instead of duplicating this literal 'checkpoint/' 3 times.( «ã‰8ç·§¨ˆ2
+qpython:S1192Ç"LDefine a constant instead of duplicating this literal 'train_data/' 3 times.(Ç˜–ÿÿÿÿÿ8ç·§¨ˆ2
+vpython:S1192Ž	"VDefine a constant instead of duplicating this literal 'intermediate_results/' 3 times.( «ã‰8ç·§¨ˆ2
+Bpython:S125:"Remove this commented out code.(å¢ìÀÿÿÿÿÿ8ç·§¨ˆ2
+Bpython:S125>"Remove this commented out code.(ºƒªÚþÿÿÿÿ8ç·§¨ˆ2
+ppython:S1854Q"QRemove this assignment to local variable 'original_max'; the value is never used.(ÛðÉ8ç·§¨ˆ2
+upython:S1854P"QRemove this assignment to local variable 'original_min'; the value is never used.(àÑÇÚøÿÿÿÿ8ç·§¨ˆ2
+kpython:S1763k"GDelete this unreachable code or refactor the code to make it reachable.(ò‘ó…þÿÿÿÿ8ç·§¨ˆ2
+=python:S125o"Remove this commented out code.(ÃÓôÅ8ç·§¨ˆ2
+epython:S3457ƒ"EAdd replacement fields or use a normal string instead of an f-string.(ÌŽ¿Ã8ç·§¨ˆ2
+ypython:S3776Å"TRefactor this function to reduce its Cognitive Complexity from 21 to the 15 allowed.(È¹©Ýúÿÿÿÿ8è·§¨ˆ2
+Spython:S1172‡".Remove the unused function parameter "device".(ñü¢áøÿÿÿÿ8è·§¨ˆ2
+|python:S117‡"XRename this parameter "criterionGAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(ñü¢áøÿÿÿÿ8è·§¨ˆ2
+vpython:S117˜"WRename this local variable "loss_D" to match the regular expression ^[_a-z][a-z0-9_]*$.(³Âåè8è·§¨ˆ2
+€python:S117•"\Rename this local variable "loss_D_fake" to match the regular expression ^[_a-z][a-z0-9_]*$.(‰»™‚ÿÿÿÿÿ8è·§¨ˆ2
+{python:S117’"\Rename this local variable "loss_D_real" to match the regular expression ^[_a-z][a-z0-9_]*$.(ð¶„8è·§¨ˆ2
+tpython:S117‡"PRename this parameter "netD" to match the regular expression ^[_a-z][a-z0-9_]*$.(ñü¢áøÿÿÿÿ8è·§¨ˆ2
+{python:S1542‡"VRename function "backward_D_basic" to match the regular expression ^[a-z_][a-z0-9_]*$.(ñü¢áøÿÿÿÿ8è·§¨ˆ2
+{python:S117¹"WRename this local variable "Loss_D" to match the regular expression ^[_a-z][a-z0-9_]*$.(´É¡¹üÿÿÿÿ8è·§¨ˆ2
+python:S117º"[Rename this local variable "Loss_G_GAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(ùåÆøÿÿÿÿ8è·§¨ˆ2
+python:S117»"]Rename this local variable "Loss_G_cycle" to match the regular expression ^[_a-z][a-z0-9_]*$.(¥ª‡æúÿÿÿÿ8è·§¨ˆ2
+{python:S117¾"\Rename this local variable "Loss_deblur" to match the regular expression ^[_a-z][a-z0-9_]*$.(’ø¸²8è·§¨ˆ2
+‚python:S117½"^Rename this local variable "Loss_feedback" to match the regular expression ^[_a-z][a-z0-9_]*$.(È¹Éðùÿÿÿÿ8è·§¨ˆ2
+tpython:S117¥"URename this parameter "SSIM_loss" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8è·§¨ˆ2
+wpython:S117¥"XRename this parameter "criterionGAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8é·§¨ˆ2
+vpython:S117¥"WRename this parameter "criterionL1" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8é·§¨ˆ2
+python:S117¶"[Rename this local variable "fakeA_pool" to match the regular expression ^[_a-z][a-z0-9_]*$.(“›àüÿÿÿÿ8é·§¨ˆ2
+zpython:S117·"[Rename this local variable "fakeB_pool" to match the regular expression ^[_a-z][a-z0-9_]*$.(™´ˆ½8é·§¨ˆ2
+vpython:S117Þ"WRename this local variable "fake_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(õÖÊ‘8é·§¨ˆ2
+vpython:S117Ü"WRename this local variable "fake_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ð¢à 8é·§¨ˆ2
+wpython:S117á"XRename this local variable "fake_C1" to match the regular expression ^[_a-z][a-z0-9_]*$.(Úõ‰Á8é·§¨ˆ2
+wpython:S117µ"XRename this local variable "fake_C2" to match the regular expression ^[_a-z][a-z0-9_]*$.(þÆæµ8é·§¨ˆ2
+zpython:S117¥"[Rename this parameter "learning_rate_D" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8é·§¨ˆ2
+zpython:S117¥"[Rename this parameter "learning_rate_G" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8é·§¨ˆ2
+}python:S117"YRename this local variable "loss_D_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(‹¨ý¶ûÿÿÿÿ8é·§¨ˆ2
+xpython:S117’"YRename this local variable "loss_D_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(¡¹½é8é·§¨ˆ2
+{python:S117€"WRename this local variable "loss_G" to match the regular expression ^[_a-z][a-z0-9_]*$.(â½°èûÿÿÿÿ8é·§¨ˆ2
+}python:S117ï"YRename this local variable "loss_G_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(ƒ¨èúÿÿÿÿ8é·§¨ˆ2
+xpython:S117ñ"YRename this local variable "loss_G_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(Í‡Ñ¯8é·§¨ˆ2
+|python:S117÷"]Rename this local variable "loss_cycle_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(¤þŽ8é·§¨ˆ2
+python:S117û"]Rename this local variable "loss_cycle_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(€…¤ƒüÿÿÿÿ8é·§¨ˆ2
+qpython:S117¥"RRename this parameter "netD_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8é·§¨ˆ2
+qpython:S117¥"RRename this parameter "netD_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8ê·§¨ˆ2
+qpython:S117¥"RRename this parameter "netG_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8ê·§¨ˆ2
+qpython:S117¥"RRename this parameter "netG_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8ê·§¨ˆ2
+qpython:S117¥"RRename this parameter "optimD" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8ê·§¨ˆ2
+qpython:S117¥"RRename this parameter "optimG" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùñìî8ê·§¨ˆ2
+zpython:S117ã"VRename this local variable "rec_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(›ä¬˜úÿÿÿÿ8ê·§¨ˆ2
+zpython:S117å"VRename this local variable "rec_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(ý«‚òþÿÿÿÿ8ê·§¨ˆ2
+kpython:S107¥"LFunction "train" has 22 parameters, which is greater than the 13 authorized.(Ùñìî8ê·§¨ˆ2
+tpython:S3776¥"TRefactor this function to reduce its Cognitive Complexity from 18 to the 15 allowed.(Ùñìî8ê·§¨ˆ2
+Hpython:S1172ä")Remove the unused function parameter "x".(’†„/8ê·§¨ˆ2
+tpython:S3776ë"TRefactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed.(¯üËé8ê·§¨ˆ2
+tpython:S117"PRename this parameter "netG" to match the regular expression ^[_a-z][a-z0-9_]*$.(åá‰«ÿÿÿÿÿ8ê·§¨ˆ2
+spython:S1542"NRename function "define_G" to match the regular expression ^[a-z_][a-z0-9_]*$.(åá‰«ÿÿÿÿÿ8ë·§¨ˆ2
+zpython:S117­"VRename this parameter "n_layers_D" to match the regular expression ^[_a-z][a-z0-9_]*$.(žî¡Êúÿÿÿÿ8ë·§¨ˆ2
+tpython:S117­"PRename this parameter "netD" to match the regular expression ^[_a-z][a-z0-9_]*$.(žî¡Êúÿÿÿÿ8ë·§¨ˆ2
+spython:S1542­"NRename function "define_D" to match the regular expression ^[a-z_][a-z0-9_]*$.(žî¡Êúÿÿÿÿ8ë·§¨ˆ2
+Dpython:S6660™"%Use the `isinstance()` function here.(¡äÚv8ë·§¨ˆ2
+ƒpython:S101½"dRename class "Deblur_Net" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(»¼Ø¾8ë·§¨ˆ2
+Jpython:S1481Ó"+Replace the unused loop index "i" with "_".(›ñÿ88ë·§¨ˆ2
+‡python:S101æ"cRename class "Res_Block" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(§ÂÑýÿÿÿÿ8ë·§¨ˆ2
+†python:S101 "bRename class "Care_net" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(ºüßÛýÿÿÿÿ8ë·§¨ˆ2
+Epython:S6660¤"%Use the `isinstance()` function here.(™µþû8ë·§¨ˆ2
+Tpython:S1481‚"/Replace the unused local variable "N" with "_".(‹ÔÊåÿÿÿÿÿ8ë·§¨ˆ2
+Tpython:S1481‚"/Replace the unused local variable "W" with "_".(‹ÔÊåÿÿÿÿÿ8ë·§¨ˆ2
+Tpython:S1481‚"/Replace the unused local variable "H" with "_".(‹ÔÊåÿÿÿÿÿ8ë·§¨ˆ2
+kpython:S117Œ"MRename this parameter "K" to match the regular expression ^[_a-z][a-z0-9_]*$.(Äú q8ë·§¨ˆ2
+qpython:S117ˆ"MRename this parameter "X" to match the regular expression ^[_a-z][a-z0-9_]*$.(—» ›úÿÿÿÿ8ë·§¨ˆ2
+qpython:S117ˆ"MRename this parameter "Y" to match the regular expression ^[_a-z][a-z0-9_]*$.(—» ›úÿÿÿÿ8ë·§¨ˆ2
+Upython:S1481˜"5Replace the unused local variable "channel" with "_".(±¾‘´8ë·§¨ˆ2
+Spython:S1481˜"3Replace the unused local variable "width" with "_".(±¾‘´8ì·§¨ˆ2
+Tpython:S1481˜"4Replace the unused local variable "height" with "_".(±¾‘´8ì·§¨ˆ2
+Spython:S1481˜"3Replace the unused local variable "batch" with "_".(±¾‘´8ì·§¨ˆ2
+qpython:S117¹"MRename this parameter "K" to match the regular expression ^[_a-z][a-z0-9_]*$.(”ò¯ìýÿÿÿÿ8ì·§¨ˆ2
+qpython:S117³"MRename this parameter "X" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÛíË‹ÿÿÿÿÿ8ì·§¨ˆ2
+qpython:S117³"MRename this parameter "Y" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÛíË‹ÿÿÿÿÿ8ì·§¨ˆ2
+Upython:S1481Ý"0Replace the unused local variable "cs" with "_".(²‚­´þÿÿÿÿ8ì·§¨ˆ2
+Ipython:S1940Í")Use the opposite operator ("!=") instead.(ï×Ë8ì·§¨ˆ2
+Npython:S1940Ð")Use the opposite operator ("!=") instead.(ÂÆ™¬øÿÿÿÿ8ì·§¨ˆ2
+Npython:S1940Ö")Use the opposite operator ("!=") instead.(Ù‚‚ûÿÿÿÿ8ì·§¨ˆ2
+kpython:S117ò"MRename this parameter "K" to match the regular expression ^[_a-z][a-z0-9_]*$.(Äú q8ì·§¨ˆ2
+qpython:S117ë"MRename this parameter "X" to match the regular expression ^[_a-z][a-z0-9_]*$.(…¾Óìþÿÿÿÿ8ì·§¨ˆ2
+qpython:S117ë"MRename this parameter "Y" to match the regular expression ^[_a-z][a-z0-9_]*$.(…¾Óìþÿÿÿÿ8ì·§¨ˆ2
+Ipython:S1940„")Use the opposite operator ("!=") instead.(ï×Ë8ì·§¨ˆ2
+Npython:S1940‡")Use the opposite operator ("!=") instead.(ÂÆ™¬øÿÿÿÿ8ì·§¨ˆ2
+Npython:S1940")Use the opposite operator ("!=") instead.(Ù‚‚ûÿÿÿÿ8ì·§¨ˆ2
+qpython:S117¼"MRename this parameter "K" to match the regular expression ^[_a-z][a-z0-9_]*$.(”ò¯ìýÿÿÿÿ8ì·§¨ˆ2
+lpython:S117Ñ"MRename this parameter "X" to match the regular expression ^[_a-z][a-z0-9_]*$.(€ò›î8ì·§¨ˆ2
+lpython:S117Ñ"MRename this parameter "Y" to match the regular expression ^[_a-z][a-z0-9_]*$.(€ò›î8ì·§¨ˆ2
+€python:S101Ú"aRename class "MS_SSIM" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(‚“¶¥8ì·§¨ˆ2
+kpython:S117â"MRename this parameter "K" to match the regular expression ^[_a-z][a-z0-9_]*$.(Äú q8í·§¨ˆ2
+lpython:S117ö"MRename this parameter "X" to match the regular expression ^[_a-z][a-z0-9_]*$.(€ò›î8í·§¨ˆ2
+lpython:S117ö"MRename this parameter "Y" to match the regular expression ^[_a-z][a-z0-9_]*$.(€ò›î8í·§¨ˆ2
+‹python:S101þ"mRename class "L1_Charbonnier_loss" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(§ÙŸL8í·§¨ˆ2
+lpython:S117„	"MRename this parameter "X" to match the regular expression ^[_a-z][a-z0-9_]*$.(€ò›î8í·§¨ˆ2
+lpython:S117„	"MRename this parameter "Y" to match the regular expression ^[_a-z][a-z0-9_]*$.(€ò›î8í·§¨ˆ2
+‹python:S101Ï	"lRename class "ImageDataset_numpy" to match the regular expression ^_?([A-Z_][a-zA-Z0-9]*|[a-z_][a-z0-9_]*)$.(žÿÈÛ8í·§¨ˆ2
+dpython:S6711Ú	"DUse a "numpy.random.Generator" here instead of this legacy function.(”šå8í·§¨ˆ2
+dpython:S6711Û	"DUse a "numpy.random.Generator" here instead of this legacy function.(Ë£‚8í·§¨ˆ2
+~python:S117°
+"ZRename this local variable "SSIM_loss" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ð›²Øýÿÿÿÿ8í·§¨ˆ2
+python:S117¯
+"]Rename this local variable "criterionGAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ú­µ›þÿÿÿÿ8í·§¨ˆ2
+€python:S117±
+"\Rename this local variable "criterionL1" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦õ†òüÿÿÿÿ8í·§¨ˆ2
+zpython:S117‘
+"[Rename this parameter "learning_rate_D" to match the regular expression ^[_a-z][a-z0-9_]*$.(‚ª†ß8í·§¨ˆ2
+zpython:S117‘
+"[Rename this parameter "learning_rate_G" to match the regular expression ^[_a-z][a-z0-9_]*$.(‚ª†ß8í·§¨ˆ2
+vpython:S117¥
+"WRename this local variable "netD_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(ß‘¦Í8í·§¨ˆ2
+vpython:S117¦
+"WRename this local variable "netD_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(É£²Ù8í·§¨ˆ2
+vpython:S117§
+"WRename this local variable "netG_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(Æ‚˜ù8í·§¨ˆ2
+vpython:S117©
+"WRename this local variable "netG_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(äÎíÇ8í·§¨ˆ2
+vpython:S117¶
+"WRename this local variable "optimD" to match the regular expression ^[_a-z][a-z0-9_]*$.(§åÀÂ8í·§¨ˆ2
+{python:S117´
+"WRename this local variable "optimG" to match the regular expression ^[_a-z][a-z0-9_]*$.(ë•ñÝøÿÿÿÿ8í·§¨ˆ2
+~python:S117ñ
+"ZRename this local variable "SSIM_loss" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ð›²Øýÿÿÿÿ8í·§¨ˆ2
+python:S117ï
+"]Rename this local variable "criterionGAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ú­µ›þÿÿÿÿ8í·§¨ˆ2
+€python:S117ó
+"\Rename this local variable "criterionL1" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦õ†òüÿÿÿÿ8î·§¨ˆ2
+vpython:S117æ
+"WRename this local variable "netD_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(ß‘¦Í8î·§¨ˆ2
+vpython:S117è
+"WRename this local variable "netD_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(É£²Ù8î·§¨ˆ2
+{python:S117ê
+"WRename this local variable "netG_A" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÎÎ®ìþÿÿÿÿ8î·§¨ˆ2
+upython:S117ë
+"WRename this local variable "netG_B" to match the regular expression ^[_a-z][a-z0-9_]*$.(¹«˜48î·§¨ˆ2
+vpython:S117õ
+"WRename this local variable "optimD" to match the regular expression ^[_a-z][a-z0-9_]*$.(Çÿ¡Ø8î·§¨ˆ2
+{python:S117ô
+"WRename this local variable "optimG" to match the regular expression ^[_a-z][a-z0-9_]*$.(²•ûúÿÿÿÿ8î·§¨ˆ2
+`python:S930ù
+"AAdd 8 missing arguments; 'train' expects 22 positional arguments.(³¯¾¸8î·§¨ˆ2
+Spython:S1481ž".Remove the unused local variable "model_name".(üÅœËþÿÿÿÿ8î·§¨ˆ2
+Npython:S1481".Remove the unused local variable "model_path".(æ‰×Õ8î·§¨ˆ2
+>python:S125Ã"Remove this commented out code.(­À‹ñ8î·§¨ˆ2

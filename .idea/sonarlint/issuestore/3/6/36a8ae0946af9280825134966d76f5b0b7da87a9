@@ -1,0 +1,26 @@
+
+qpython:S1192²"QDefine a constant instead of duplicating this literal "/Quality Control" 3 times.(¹û…·8è°§¨ˆ2
+cpython:S6711L"DUse a "numpy.random.Generator" here instead of this legacy function.(è“î¥8è°§¨ˆ2
+Spython:S1481W"/Remove the unused local variable "image_16bit".(Ò¯ÜÑøÿÿÿÿ8è°§¨ˆ2
+wpython:S117à"XRename this local variable "XY_axes" to match the regular expression ^[_a-z][a-z0-9_]*$.( Ñ¥8é°§¨ˆ2
+zpython:S117Š"VRename this local variable "X_val" to match the regular expression ^[_a-z][a-z0-9_]*$.(¯ƒ‘ªùÿÿÿÿ8é°§¨ˆ2
+zpython:S117Š"VRename this local variable "Y_val" to match the regular expression ^[_a-z][a-z0-9_]*$.(¯ƒ‘ªùÿÿÿÿ8é°§¨ˆ2
+wpython:S117°"YRename this local variable "lossData" to match the regular expression ^[_a-z][a-z0-9_]*$.(ë •p8é°§¨ˆ2
+python:S117¸"`Rename this local variable "lossDataCSVpath" to match the regular expression ^[_a-z][a-z0-9_]*$.(«¿ãÕ8é°§¨ˆ2
+ppython:S107‘"QFunction "train_care" has 14 parameters, which is greater than the 13 authorized.(İ”¾Á8é°§¨ˆ2
+Kpython:S1481°",Remove the unused local variable "lossData".(ë •p8é°§¨ˆ2
+Fpython:S1481Á"'Remove the unused local variable "fig".(²«K8é°§¨ˆ2
+Vpython:S1481©"1Remove the unused local variable "best_val_loss".(’Ìøÿÿÿÿ8é°§¨ˆ2
+|python:S116«"]Rename this field "Use_Data_augmentation" to match the regular expression ^[_a-z][_a-z0-9]*$.(úØÕÑ8é°§¨ˆ2
+|python:S116¬"]Rename this field "Save_augmented_images" to match the regular expression ^[_a-z][_a-z0-9]*$.(ø…´À8é°§¨ˆ2
+python:S116­"[Rename this field "Multiply_dataset_by" to match the regular expression ^[_a-z][_a-z0-9]*$.(‡Èä‘üÿÿÿÿ8é°§¨ˆ2
+Cpython:S125Ì"Remove this commented out code.(ß¤‚øÿÿÿÿ8é°§¨ˆ2
+Ypython:S905ú":Remove or refactor this statement; it has no side effects.(Œûöñ8ê°§¨ˆ2
+Ypython:S905†":Remove or refactor this statement; it has no side effects.(Œûöñ8ê°§¨ˆ2
+Mpython:S2201¢"(The return value of "vars" must be used.(éãªçøÿÿÿÿ8ê°§¨ˆ2
+‚python:S117Û"^Rename this local variable "imagesTr_path" to match the regular expression ^[_a-z][a-z0-9_]*$.(¿şÑÓşÿÿÿÿ8ê°§¨ˆ2
+‚python:S117Ü"^Rename this local variable "labelsTr_path" to match the regular expression ^[_a-z][a-z0-9_]*$.(×Ô½´ÿÿÿÿÿ8ê°§¨ˆ2
+{python:S117ß"\Rename this local variable "numTraining" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ÿâ8ê°§¨ˆ2
+ypython:S117ˆ"URename this parameter "datasetID" to match the regular expression ^[_a-z][a-z0-9_]*$.(ò†½âøÿÿÿÿ8ê°§¨ˆ2
+zpython:S117ˆ"VRename this parameter "nnUNet_env" to match the regular expression ^[_a-z][a-z0-9_]*$.(ò†½âøÿÿÿÿ8ê°§¨ˆ2
+wpython:S1542ˆ"RRename function "train_nnUNet" to match the regular expression ^[a-z_][a-z0-9_]*$.(ò†½âøÿÿÿÿ8ê°§¨ˆ2

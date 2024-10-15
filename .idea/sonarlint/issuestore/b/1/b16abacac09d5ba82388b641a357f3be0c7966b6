@@ -1,0 +1,128 @@
+
+“python:S1192ú"nDefine a constant instead of duplicating this literal "  *No dendrites were analyzed for this image." 3 times.(—›¿÷ùÿÿÿÿ8Ûµ§¨ˆ2
+Bpython:S125"Remove this commented out code.(ÒïÔöşÿÿÿÿ8Ûµ§¨ˆ2
+rpython:S3776H"TRefactor this function to reduce its Cognitive Complexity from 18 to the 15 allowed.(Œ¢Ö38Üµ§¨ˆ2
+Bpython:S125k"Remove this commented out code.(Ç¿Ù©ıÿÿÿÿ8Üµ§¨ˆ2
+Qpython:S1481–"1Replace the unused local variable "cmd" with "_".(ë”Ï8Üµ§¨ˆ2
+ypython:S3776”"TRefactor this function to reduce its Cognitive Complexity from 64 to the 15 allowed.(÷óĞØÿÿÿÿÿ8İµ§¨ˆ2
+jpython:S3457•"EAdd replacement fields or use a normal string instead of an f-string.(ÊØ±¿úÿÿÿÿ8İµ§¨ˆ2
+jpython:S3457›"EAdd replacement fields or use a normal string instead of an f-string.(–İûœúÿÿÿÿ8İµ§¨ˆ2
+>python:S125¢"Remove this commented out code.(Ôã¶8İµ§¨ˆ2
+jpython:S3457¶"EAdd replacement fields or use a normal string instead of an f-string.(‡¦•¥üÿÿÿÿ8İµ§¨ˆ2
+Cpython:S125Ú"Remove this commented out code.(İ€àŸüÿÿÿÿ8İµ§¨ˆ2
+epython:S3457æ"EAdd replacement fields or use a normal string instead of an f-string.(‘öÀÙ8İµ§¨ˆ2
+>python:S125ë"Remove this commented out code.(Â§œ8İµ§¨ˆ2
+zpython:S117ç"VRename this parameter "nnUnet_env" to match the regular expression ^[_a-z][a-z0-9_]*$.(±‹ÂĞûÿÿÿÿ8İµ§¨ˆ2
+Tpython:S1481÷"4Replace the unused local variable "stderr" with "_".(·€¸¦8Şµ§¨ˆ2
+Ppython:S1172•"+Remove the unused function parameter "env".(Ù†×ƒşÿÿÿÿ8Şµ§¨ˆ2
+Spython:S1172•".Remove the unused function parameter "python".(Ù†×ƒşÿÿÿÿ8Şµ§¨ˆ2
+>python:S125–"Remove this commented out code.(¿Öˆ8Şµ§¨ˆ2
+Spython:S1172›".Remove the unused function parameter "logger".(öº®šúÿÿÿÿ8Şµ§¨ˆ2
+ƒpython:S117Ÿ"_Rename this local variable "nnUnet_results" to match the regular expression ^[_a-z][a-z0-9_]*$.(Š úÔÿÿÿÿÿ8Şµ§¨ˆ2
+|python:S1542›"WRename function "initialize_nnUnet" to match the regular expression ^[a-z_][a-z0-9_]*$.(öº®šúÿÿÿÿ8Şµ§¨ˆ2
+|python:S117ß"]Rename this local variable "vaa3D_neuron" to match the regular expression ^[_a-z][a-z0-9_]*$.(Öğşí8Şµ§¨ˆ2
+Tpython:S1481ç"4Replace the unused local variable "stdout" with "_".(·€¸¦8Şµ§¨ˆ2
+Tpython:S1481ç"4Replace the unused local variable "stderr" with "_".(·€¸¦8Şµ§¨ˆ2
+ypython:S3776¥"TRefactor this function to reduce its Cognitive Complexity from 22 to the 15 allowed.(…Ïğùÿÿÿÿ8ßµ§¨ˆ2
+Cpython:S125§"Remove this commented out code.(›¨¤¥úÿÿÿÿ8ßµ§¨ˆ2
+epython:S3457Û"EAdd replacement fields or use a normal string instead of an f-string.(±ù·¸8ßµ§¨ˆ2
+epython:S3457ö"EAdd replacement fields or use a normal string instead of an f-string.(õõÈ8ßµ§¨ˆ2
+Ppython:S1172ş"+Remove the unused function parameter "log".(Áëã‚øÿÿÿÿ8ßµ§¨ˆ2
+python:S117Í"[Rename this local variable "neuron_MIP" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ô—Ÿøÿÿÿÿ8ßµ§¨ˆ2
+zpython:S117Õ"[Rename this local variable "spine_MIPs" to match the regular expression ^[_a-z][a-z0-9_]*$.(éĞ”ê8ßµ§¨ˆ2
+Xpython:S1481Õ"8Replace the unused local variable "spine_vols" with "_".(éĞ”ê8ßµ§¨ˆ2
+Zpython:S1481Õ":Replace the unused local variable "spine_slices" with "_".(éĞ”ê8ßµ§¨ˆ2
+Spython:S1481Í".Remove the unused local variable "neuron_MIP".(Ô—Ÿøÿÿÿÿ8ßµ§¨ˆ2
+=python:S125¨"Remove this commented out code.(æ¯ô8ßµ§¨ˆ2
+Cpython:S125³"Remove this commented out code.(ÿı¡áúÿÿÿÿ8ßµ§¨ˆ2
+Cpython:S125¼"Remove this commented out code.(ºµõİıÿÿÿÿ8àµ§¨ˆ2
+epython:S3457Ç"EAdd replacement fields or use a normal string instead of an f-string.(€Šì£8àµ§¨ˆ2
+python:S117ö"[Rename this local variable "neuron_MIP" to match the regular expression ^[_a-z][a-z0-9_]*$.(î¾ÜÏüÿÿÿÿ8àµ§¨ˆ2
+zpython:S117‚"[Rename this local variable "spine_MIPs" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ş® …8àµ§¨ˆ2
+Cpython:S125†"Remove this commented out code.(Ìƒœùÿÿÿÿ8àµ§¨ˆ2
+=python:S125¸"Remove this commented out code.(æ¯ô8àµ§¨ˆ2
+>python:S125å"Remove this commented out code.(ñúŞö8àµ§¨ˆ2
+Cpython:S125ş"Remove this commented out code.(¸úİ¨ÿÿÿÿÿ8àµ§¨ˆ2
+Tpython:S6735”"/Specify the "validate" parameter of this merge.(ùÈ ñıÿÿÿÿ8àµ§¨ˆ2
+Upython:S6734"5Do not use "inplace=True" when modifying a dataframe.(ÿ­¡Å8àµ§¨ˆ2
+>python:S125°"Remove this commented out code.(ÜÙúõ8àµ§¨ˆ2
+=python:S125´"Remove this commented out code.(˜Åít8àµ§¨ˆ2
+>python:S125¶"Remove this commented out code.(óÇÜÏ8àµ§¨ˆ2
+>python:S125Î"Remove this commented out code.(ÜÙúõ8àµ§¨ˆ2
+rpython:S1854Ã"RRemove this assignment to local variable 'soma_distance'; the value is never used.(û£êÄ8áµ§¨ˆ2
+wpython:S1854Æ"RRemove this assignment to local variable 'soma_distance'; the value is never used.(”í¡üÿÿÿÿ8áµ§¨ˆ2
+zpython:S117º"[Rename this local variable "neuron_MIP" to match the regular expression ^[_a-z][a-z0-9_]*$.(àšÙ8áµ§¨ˆ2
+zpython:S117ú"[Rename this local variable "spine_MIPs" to match the regular expression ^[_a-z][a-z0-9_]*$.(şòÜÜ8áµ§¨ˆ2
+wpython:S1542ë"WRename function "analyze_spines_4D" to match the regular expression ^[a-z_][a-z0-9_]*$.(Ë“á8áµ§¨ˆ2
+Zpython:S1481ú":Replace the unused local variable "spine_slices" with "_".(şòÜÜ8áµ§¨ˆ2
+Npython:S1481º".Remove the unused local variable "neuron_MIP".(àšÙ8áµ§¨ˆ2
+Kpython:S1481°",Remove the unused local variable "y_over_t".(ÆŞ›?8áµ§¨ˆ2
+Vpython:S1481“"6Remove the unused local variable "soma_distance_list".(à§úå8áµ§¨ˆ2
+Lpython:S1481±",Remove the unused local variable "x_over_t".(Í¥¿‹8áµ§¨ˆ2
+Xpython:S1481ú"8Replace the unused local variable "spine_vols" with "_".(şòÜÜ8áµ§¨ˆ2
+Vpython:S1481•"1Remove the unused local variable "spine_summary".(£»ë°ûÿÿÿÿ8áµ§¨ˆ2
+Qpython:S1481¯",Remove the unused local variable "z_over_t".(ì«‰çúÿÿÿÿ8áµ§¨ˆ2
+tpython:S3776ë"TRefactor this function to reduce its Cognitive Complexity from 19 to the 15 allowed.(Ë“á8âµ§¨ˆ2
+Cpython:S125í"Remove this commented out code.(›¨¤¥úÿÿÿÿ8âµ§¨ˆ2
+=python:S125É"Remove this commented out code.(æ¯ô8âµ§¨ˆ2
+epython:S3457õ"EAdd replacement fields or use a normal string instead of an f-string.(€Šì£8âµ§¨ˆ2
+Cpython:S125ø"Remove this commented out code.(¤¾µ½ÿÿÿÿÿ8âµ§¨ˆ2
+Cpython:S125‡"Remove this commented out code.(áËÜğùÿÿÿÿ8âµ§¨ˆ2
+>python:S125Ä"Remove this commented out code.(Èñ—«8âµ§¨ˆ2
+Opython:S1172Í"0Remove the unused function parameter "bitdepth".(úµ48âµ§¨ˆ2
+>python:S125á"Remove this commented out code.(†ãşù8âµ§¨ˆ2
+Upython:S1172ì"0Remove the unused function parameter "bitdepth".(ç¹ç‚úÿÿÿÿ8âµ§¨ˆ2
+Ppython:S1172ƒ	"0Remove the unused function parameter "bitdepth".(Æ‡®€8âµ§¨ˆ2
+>python:S125˜	"Remove this commented out code.(†ãşù8âµ§¨ˆ2
+Spython:S1172½	".Remove the unused function parameter "logger".(Î öšüÿÿÿÿ8ãµ§¨ˆ2
+>python:S125¾	"Remove this commented out code.(¹—ó´8ãµ§¨ˆ2
+Cpython:S125Ã	"Remove this commented out code.(¢¹Ìôÿÿÿÿÿ8ãµ§¨ˆ2
+Spython:S1172ã	".Remove the unused function parameter "logger".(µ¯şÈûÿÿÿÿ8ãµ§¨ˆ2
+>python:S125ä	"Remove this commented out code.(¹—ó´8ãµ§¨ˆ2
+Cpython:S125é	"Remove this commented out code.(¢¹Ìôÿÿÿÿÿ8ãµ§¨ˆ2
+Qpython:S1172¯
+"1Remove the unused function parameter "locations".(ãêá‘8ãµ§¨ˆ2
+Qpython:S1172¯
+"1Remove the unused function parameter "neuron_ch".(ãêá‘8ãµ§¨ˆ2
+Ppython:S1172¯
+"0Remove the unused function parameter "filename".(ãêá‘8ãµ§¨ˆ2
+xpython:S117á
+"TRename this local variable "Max" to match the regular expression ^[_a-z][a-z0-9_]*$.(ø¯×¯ıÿÿÿÿ8ãµ§¨ˆ2
+spython:S117à
+"URename this local variable "Mean" to match the regular expression ^[_a-z][a-z0-9_]*$.(¯¿n8ãµ§¨ˆ2
+zpython:S1542¯
+"ZRename function "spine_measurementsV2" to match the regular expression ^[a-z_][a-z0-9_]*$.(ãêá‘8ãµ§¨ˆ2
+>python:S125¡"Remove this commented out code.(÷áÎ¸8ãµ§¨ˆ2
+>python:S125Ì"Remove this commented out code.(ßÍ³É8ãµ§¨ˆ2
+Npython:S1172Ş".Remove the unused function parameter "logger".(‚ªÆÏ8ãµ§¨ˆ2
+Lpython:S1172õ",Remove the unused function parameter "file".(½æõï8äµ§¨ˆ2
+Npython:S1172õ".Remove the unused function parameter "logger".(½æõï8ãµ§¨ˆ2
+Qpython:S1172õ"1Remove the unused function parameter "locations".(½æõï8ãµ§¨ˆ2
+Cpython:S125»"Remove this commented out code.(Ä¢¦‚üÿÿÿÿ8äµ§¨ˆ2
+Cpython:S125Ã"Remove this commented out code.(ì€ú»ÿÿÿÿÿ8äµ§¨ˆ2
+Cpython:S125Å"Remove this commented out code.(Å¸§Üøÿÿÿÿ8äµ§¨ˆ2
+Cpython:S125Ç"Remove this commented out code.(ğ„ûùÿÿÿÿ8äµ§¨ˆ2
+Cpython:S125×"Remove this commented out code.(è°¯¤ıÿÿÿÿ8äµ§¨ˆ2
+Cpython:S125ç"Remove this commented out code.(‡É§÷ùÿÿÿÿ8äµ§¨ˆ2
+>python:S125î"Remove this commented out code.(’Øéê8äµ§¨ˆ2
+>python:S125ù"Remove this commented out code.(”Ë®É8äµ§¨ˆ2
+>python:S125‘"Remove this commented out code.(Ñ‡ÍŠ8äµ§¨ˆ2
+Cpython:S125˜"Remove this commented out code.(õà›óøÿÿÿÿ8äµ§¨ˆ2
+Cpython:S125œ"Remove this commented out code.(¨éµ¦ÿÿÿÿÿ8äµ§¨ˆ2
+>python:S125Ÿ"Remove this commented out code.(¶ŠÅ¨8äµ§¨ˆ2
+>python:S125£"Remove this commented out code.(ÀÏ‰8äµ§¨ˆ2
+Wpython:S1481ñ"7Remove the unused local variable "progress_percentage".(ÈÃïô8äµ§¨ˆ2
+>python:S125à"Remove this commented out code.(–±É£8äµ§¨ˆ2
+>python:S125ÿ"Remove this commented out code.(Ü÷Ç±8äµ§¨ˆ2
+Cpython:S125•"Remove this commented out code.(¢·ü‡şÿÿÿÿ8äµ§¨ˆ2
+jpython:S3457"EAdd replacement fields or use a normal string instead of an f-string.(Ù…ò˜ıÿÿÿÿ8äµ§¨ˆ2
+Wpython:S1481å"7Remove the unused local variable "progress_percentage".(ÈÃïô8åµ§¨ˆ2
+>python:S125Ô"Remove this commented out code.(–±É£8åµ§¨ˆ2
+python:S930Û"kAdd 1 missing arguments; 'create_filtered_and_unfiltered_spine_arrays_cupy' expects 9 positional arguments.(Ø²œøûÿÿÿÿ8åµ§¨ˆ2
+Wpython:S1172€"2Remove the unused function parameter "block_size".(²©´œşÿÿÿÿ8åµ§¨ˆ2
+Spython:S1172€".Remove the unused function parameter "logger".(²©´œşÿÿÿÿ8åµ§¨ˆ2
+Qpython:S1172€",Remove the unused function parameter "file".(²©´œşÿÿÿÿ8åµ§¨ˆ2
+zpython:S117"[Rename this local variable "stacked_4D" to match the regular expression ^[_a-z][a-z0-9_]*$.(»¹ºÊ8åµ§¨ˆ2
+python:S1542€"jRename function "create_MIP_spine_arrays_in_blocks_4d" to match the regular expression ^[a-z_][a-z0-9_]*$.(²©´œşÿÿÿÿ8åµ§¨ˆ2
+>python:S125"Remove this commented out code.(§óù˜8åµ§¨ˆ2
+Xpython:S1172¾"3Remove the unused function parameter "script_path".(åˆ÷ãşÿÿÿÿ8åµ§¨ˆ2

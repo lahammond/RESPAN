@@ -1,0 +1,22 @@
+
+wpython:S1854‡"RRemove this assignment to local variable 'soma_distance'; the value is never used.(ÿêÌÅÿÿÿÿÿ8ÑßÈã†2
+wpython:S1854‰"RRemove this assignment to local variable 'soma_distance'; the value is never used.(”í¡üÿÿÿÿ8ÒßÈã†2
+vpython:S1854N"RRemove this assignment to local variable 'soma_distance'; the value is never used.(ÿêÌÅÿÿÿÿÿ8ÒßÈã†2
+vpython:S1854P"RRemove this assignment to local variable 'soma_distance'; the value is never used.(”í¡üÿÿÿÿ8ÒßÈã†2
+tpython:S18546"URemove this assignment to local variable 'comp_spine_table'; the value is never used.(ßª»‘8ÒßÈã†2
+Npython:S1481J"/Remove the unused local variable "spines_orig".(×”§‚8ÒßÈã†2
+Wpython:S1481x"3Remove the unused local variable "dendrite_volume".(°÷Êòüÿÿÿÿ8ÒßÈã†2
+Upython:S14815"1Remove the unused local variable "spine_summary".(£»ë°ûÿÿÿÿ8ÒßÈã†2
+Xpython:S1481t"9Replace the unused local variable "spine_table" with "_".(Ó´•™8ÒßÈã†2
+Bpython:S125$"Remove this commented out code.(›¨¤¥úÿÿÿÿ8ÒßÈã†2
+Bpython:S125I"Remove this commented out code.(Ìƒœùÿÿÿÿ8ÒßÈã†2
+Cpython:S125‚"Remove this commented out code.(Ìƒœùÿÿÿÿ8ÒßÈã†2
+xpython:S117«"YRename this local variable "FP_iou50" to match the regular expression ^[_a-z][a-z0-9_]*$.(”ªºÁ8ÒßÈã†2
+xpython:S117ª"YRename this local variable "FP_table" to match the regular expression ^[_a-z][a-z0-9_]*$.(¡«Ûï8ÒßÈã†2
+}python:S117 "YRename this local variable "TP_iou50" to match the regular expression ^[_a-z][a-z0-9_]*$.(Úù÷»øÿÿÿÿ8ÒßÈã†2
+}python:S117Ÿ"YRename this local variable "TP_table" to match the regular expression ^[_a-z][a-z0-9_]*$.(—ïó ûÿÿÿÿ8ÒßÈã†2
+Wpython:S1481’"2Remove the unused local variable "filtered_table".(†ˆ¢€ûÿÿÿÿ8ÒßÈã†2
+>python:S125¡"Remove this commented out code.(’´ïÚ8ÒßÈã†2
+Cpython:S125º"Remove this commented out code.(¨«Šµùÿÿÿÿ8ÒßÈã†2
+>python:S125Â"Remove this commented out code.(ê¶ÈÖ8ÒßÈã†2
+spython:S1542Ê"NRename function "IoU_calc" to match the regular expression ^[a-z_][a-z0-9_]*$.(çåÒ¥þÿÿÿÿ8ÓßÈã†2
