@@ -1,88 +1,0 @@
-
-¸python:S1192’	"sDefine a constant instead of duplicating this literal "Department of Neurology, The Ohio State University" 8 times.(Èï‚M8‹¥¦Íˆ2J$7be1da08-c5ea-4c68-a4d9-a4938cd82712
-˜python:S1192‘	"MDefine a constant instead of duplicating this literal "Created by: " 8 times.(øÛöøÿÿÿÿ8‹¥¦Íˆ2J$0a465036-3a66-47cc-9f5e-334170d3b295
-£python:S1192Ñ"XDefine a constant instead of duplicating this literal "No directory selected." 16 times.(åÔ•´şÿÿÿÿ8‹¥¦Íˆ2J$ab7b2758-58e2-43a7-8113-a9420e6d2663
-±python:S1192“	"kDefine a constant instead of duplicating this literal "Zuckerman Institute, Columbia University\n" 4 times.(ÏÂÿÍ8‹¥¦Íˆ2J$6af07441-cb10-4623-aea8-cbb0da7d0dc3
-£python:S1192ô"XDefine a constant instead of duplicating this literal 'Select RESPAN directory' 5 times.(—şÔÿıÿÿÿÿ8‹¥¦Íˆ2J$aef76720-4128-41fc-8fbc-ba1dadc5635c
-—python:S1192	"QDefine a constant instead of duplicating this literal "RESPAN Version: " 4 times.(°íÁ8Œ¥¦Íˆ2J$6aea34d9-f071-4ff9-a755-24b52aa0e610
-Œpython:S1192Ô	"GDefine a constant instead of duplicating this literal '/envs/' 3 times.(ÕåÒi8Œ¥¦Íˆ2J$afb83764-0825-4591-ab25-0acd1c06cb03
-©python:S1192ò"^Define a constant instead of duplicating this literal "No RESPAN directory selected." 7 times.(Îã±³ıÿÿÿÿ8Œ¥¦Íˆ2J$13bcf931-6abf-4e32-a763-678cd5e25d69
-python:S1192ó"XDefine a constant instead of duplicating this literal "Select RESPAN directory" 5 times.(Ğ¥àº8Œ¥¦Íˆ2J$1e77c78c-b5c2-40df-9b84-1bcd07e2aa03
-˜python:S1192Ş	"SDefine a constant instead of duplicating this literal "An error occurred." 5 times.(Ö¾Ép8Œ¥¦Íˆ2J$d39d3f53-6992-41bb-a06c-3b31eac95bfb
-›python:S1192	"PDefine a constant instead of duplicating this literal "Release Date: " 10 times.(íÁøÍúÿÿÿÿ8Œ¥¦Íˆ2J$7deaac33-24ae-448c-bf8f-9b395aac86bf
-¢python:S1192Ğ"]Define a constant instead of duplicating this literal "background-color: lightblue;" 5 times.(öÜÀt8Œ¥¦Íˆ2J$726b3047-4c19-4dcd-a88f-aa253e893cb0
-²python:S1192ƒ
-"gDefine a constant instead of duplicating this literal "No analysis output directory selected." 3 times.(‘ğíìşÿÿÿÿ8Œ¥¦Íˆ2J$cbf34d50-73a2-4328-85a5-7033c383a127
-Ÿpython:S1192ç"TDefine a constant instead of duplicating this literal "QGroupBox::title {" 13 times.(ÒĞæ¨üÿÿÿÿ8Œ¥¦Íˆ2J$38ac7845-6648-4753-b4fc-cb3fd54257dc
-¤python:S1192Å"^Define a constant instead of duplicating this literal "Select model output directory" 3 times.(Úçæ8Œ¥¦Íˆ2J$13915a84-f36b-4196-9bd2-bb59460a769f
-°python:S1192À"eDefine a constant instead of duplicating this literal "No training data directory selected." 4 times.(îØ˜Õüÿÿÿÿ8Œ¥¦Íˆ2J$ee2258bb-d83d-4931-a1dd-9753d3624526
-œpython:S1192Ğ"VDefine a constant instead of duplicating this literal "Selected directory: " 15 times.(à‚£»8¥¦Íˆ2J$fd891db7-dca0-494e-9c74-0d56e6116ba3
-ªpython:S1192Ä"dDefine a constant instead of duplicating this literal "No model output directory selected." 4 times.(‚Æ×÷8¥¦Íˆ2J$467a082e-0f28-4892-a7b8-f991b9525960
-{python:S1481_"1Remove the unused local variable "dev_base_path".(ƒêìøúÿÿÿÿ8¥¦Íˆ2J$a921959f-d34c-416b-acfc-a8b7dacdf1bb
-{python:S1481s"1Remove the unused local variable "dev_base_path".(ƒêìøúÿÿÿÿ8¥¦Íˆ2J$72b501f9-5b91-4acd-b0a6-da22804eb634
-`python:S1700‹"Rename field "logger"(êŞÖ“øÿÿÿÿ8¥¦Íˆ2J$7c99d0fc-9f72-4a0f-b067-6c49d18e184a
-npython:S108š")Either remove or fill this block of code.(ã‘Û¾8¥¦Íˆ2J$b33fc65c-b60e-4289-92f2-a229bac7851a
-ipython:S125¿"Remove this commented out code.(ˆˆ¿³ıÿÿÿÿ8¥¦Íˆ2J$d9675785-2a2b-407c-8076-6db307aaa910
-†python:S1481å";Remove the unused local variable "install_nnunet_repo_cmd".(ş½Èğúÿÿÿÿ8¥¦Íˆ2J$bc403d14-e149-4116-9362-543e1ad3920f
-„python:S1481ä"9Remove the unused local variable "clone_nnunet_repo_cmd".(ß©Ùøÿÿÿÿ8¥¦Íˆ2J$b209e9ae-20c3-4c0b-b3dc-c870947a132a
-¦python:S117©"\Rename this local variable "Aboutwidget" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ëò‘¦ıÿÿÿÿ8¥¦Íˆ2J$bd0eb68f-de6a-4386-b07d-f4535f8e4a9a
- python:S117§"[Rename this local variable "CAREwidget" to match the regular expression ^[_a-z][a-z0-9_]*$.(„æƒÓ8¥¦Íˆ2J$810937c9-3fb4-4522-8ee0-d3bc00820a2e
-python:S117¨"YRename this local variable "SNwidget" to match the regular expression ^[_a-z][a-z0-9_]*$.(À›õ8¥¦Íˆ2J$f859626f-3762-4369-9df0-b66302f567ea
-¥python:S117¦"[Rename this local variable "UNetwidget" to match the regular expression ^[_a-z][a-z0-9_]*$.(éä€ùÿÿÿÿ8¥¦Íˆ2J$27a4b320-6caa-405b-8da0-364ffb94effd
-dpython:S125É"Remove this commented out code.(ñôü•8¥¦Íˆ2J$e7694e35-c0c7-47a1-845d-a55a5fca7123
-dpython:S125Ö"Remove this commented out code.(íÌúè8¥¦Íˆ2J$bebd3556-de5c-4d65-aff6-ed371dd3614f
-Ÿpython:S3776§"TRefactor this function to reduce its Cognitive Complexity from 20 to the 15 allowed.(ÊÜ€şÿÿÿÿ8¥¦Íˆ2J$7f5b2922-c26b-4f89-9df3-1ec830e657a8
-ipython:S125¸"Remove this commented out code.(ä‹²·úÿÿÿÿ8¥¦Íˆ2J$697e9149-4903-4c40-967f-102ebf689862
-¬python:S117ä"bRename this local variable "defaultStyleSheet" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ìï”–úÿÿÿÿ8¥¦Íˆ2J$321fdf7e-2e43-4151-9b5b-90604564a3cc
-©python:S117á"dRename this local variable "invisibleStyleSheet" to match the regular expression ^[_a-z][a-z0-9_]*$.(×Ë”´8¥¦Íˆ2J$51528ffa-f50e-4c9a-9d93-1b06cc4d0ee3
-¡python:S117Ş"\Rename this local variable "isInvisible" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÿÀÿİ8¥¦Íˆ2J$17ae7783-d4a5-4da6-91ef-08b15eb1bead
-¤python:S117ô"ZRename this local variable "RESPANdir" to match the regular expression ^[_a-z][a-z0-9_]*$.(—şÔÿıÿÿÿÿ8¥¦Íˆ2J$cf6693f7-3931-4a0f-893b-c9f28680b253
-Ÿpython:S117"ZRename this local variable "HistMatch" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ñ­©º8¥¦Íˆ2J$eb7067d0-9ea4-402a-a733-5a10f5760bc7
-›python:S117"VRename this local variable "Track" to match the regular expression ^[_a-z][a-z0-9_]*$.(¡˜áå8¥¦Íˆ2J$249f99ca-7b2e-408e-88af-84c308dbab52
-špython:S3776Ê"TRefactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed.(«ú›‡8¥¦Íˆ2J$e591f64c-d5f4-4f20-98bb-014ac02954c6
-ipython:S125«"Remove this commented out code.(ŒŞûÒúÿÿÿÿ8¥¦Íˆ2J$0bcd343e-5687-4723-8c91-3fa36854afb2
-dpython:S125³"Remove this commented out code.(âãäâ8¥¦Íˆ2J$cd6178fb-1758-41e9-831c-34b09368e9c7
-Ÿpython:S117Ó"URename this parameter "HistMatch" to match the regular expression ^[_a-z][a-z0-9_]*$.(©ãšêıÿÿÿÿ8¥¦Íˆ2J$b626ba65-4c15-464e-94a1-c2dc857e7aed
-—python:S117Ğ"RRename this parameter "RESPAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ì®—ã8¥¦Íˆ2J$0fe5b147-b676-42d8-a9cd-a6b565383366
-–python:S117Ô"QRename this parameter "Track" to match the regular expression ^[_a-z][a-z0-9_]*$.(³Ö²æ8¥¦Íˆ2J$741eb4ce-bec6-4a02-b7ed-05f82c595884
-’python:S107Ğ"MMethod "__init__" has 22 parameters, which is greater than the 13 authorized.(Ì®—ã8¥¦Íˆ2J$11d01c88-2109-4a71-951e-72f76ed62e23
-špython:S3776ğ"TRefactor this function to reduce its Cognitive Complexity from 21 to the 15 allowed.(¯Œåò8¥¦Íˆ2J$a4c15dfd-d0c4-4c72-b3bb-8f536d2782d3
-dpython:S125‡	"Remove this commented out code.(õùüô8¥¦Íˆ2J$7ba0a45c-022e-4306-843b-394c90857ccf
-cpython:S125¦	"Remove this commented out code.(êìœg8¥¦Íˆ2J$3ccfbed0-8420-46cd-acf1-6863e3b34051
-¤python:S117¦"ZRename this local variable "RESPANdir" to match the regular expression ^[_a-z][a-z0-9_]*$.(—şÔÿıÿÿÿÿ8¥¦Íˆ2J$df98ab65-85c5-4632-be9a-5d63b7c8a7fd
-ipython:S125¹"Remove this commented out code.(Õ£©şÿÿÿÿ8¥¦Íˆ2J$bd17094f-c0d9-474e-ae78-cd8ecbde8166
-–python:S117Ô"RRename this parameter "RESPAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(ï 8¥¦Íˆ2J$dca90c03-b817-44a3-a54f-eb9dcdcee04a
-¤python:S117Å"ZRename this local variable "datasetID" to match the regular expression ^[_a-z][a-z0-9_]*$.(ºÜ€úÿÿÿÿ8¥¦Íˆ2J$463af0c5-b1e9-423c-9107-b41019e8f600
-ipython:S125…"Remove this commented out code.(ˆ×è«ıÿÿÿÿ8¥¦Íˆ2J$11892034-cb5a-4069-868a-bc7867dfb9dc
-dpython:S125œ"Remove this commented out code.(Ôíìã8¥¦Íˆ2J$b9aea763-98f0-4025-aa69-fc82d852e330
-cpython:S125Ç"Remove this commented out code.(•à™A8¥¦Íˆ2J$9bbeb701-be35-4b95-ad84-122c38f5d312
-dpython:S125Ó"Remove this commented out code.(ÅÒÍˆ8¥¦Íˆ2J$363667c3-c316-4826-93fa-ca544cda5e85
-¤python:S117Û"ZRename this local variable "RESPANdir" to match the regular expression ^[_a-z][a-z0-9_]*$.(—şÔÿıÿÿÿÿ8¥¦Íˆ2J$62074d11-13c9-4af6-8337-d3699493eee1
-¤python:S117ı"ZRename this local variable "datasetID" to match the regular expression ^[_a-z][a-z0-9_]*$.(ºî–¨úÿÿÿÿ8¥¦Íˆ2J$b4508b24-79a7-4c7b-bc24-75b99e837918
-ipython:S125ÿ"Remove this commented out code.(“¤ŸÜÿÿÿÿÿ8¥¦Íˆ2J$5d1b00a6-436e-462c-b16b-4de9f18cfc9e
-¤python:S117¸"ZRename this local variable "datasetID" to match the regular expression ^[_a-z][a-z0-9_]*$.(¡ˆÉÙüÿÿÿÿ8¥¦Íˆ2J$a2998284-c5b9-49d3-b029-d282bf7bc49f
-dpython:S125½"Remove this commented out code.(ÃÓôÅ8¥¦Íˆ2J$aca44b5c-59a0-481f-b8d2-19358e89120f
-ipython:S125×"Remove this commented out code.(Õ£©şÿÿÿÿ8¥¦Íˆ2J$3d488a00-c86e-4a42-a9db-64b28fdaf716
-œpython:S117ò"RRename this parameter "RESPAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(ö§­®ûÿÿÿÿ8¥¦Íˆ2J$8a7f959a-6709-45a7-9ec3-7f5c52a98d0a
-Ÿpython:S117ò"URename this parameter "datasetID" to match the regular expression ^[_a-z][a-z0-9_]*$.(ö§­®ûÿÿÿÿ8¥¦Íˆ2J$2bcd531f-1482-495a-8517-fc6e2f3c2a2f
-ipython:S125Û"Remove this commented out code.(ØÊ¼Ãÿÿÿÿÿ8¥¦Íˆ2J$77dfb119-f6a1-4bc8-b47a-8c0d77a07701
-ipython:S125ç"Remove this commented out code.(¸ªÈÌúÿÿÿÿ8¥¦Íˆ2J$5f58441e-5bd7-4b55-bf6a-9e2a4eed2569
-¤python:S117Å"ZRename this local variable "RESPANdir" to match the regular expression ^[_a-z][a-z0-9_]*$.(—şÔÿıÿÿÿÿ8¥¦Íˆ2J$ddc4be99-72e3-434b-a118-3683f6497836
-špython:S3776Š"TRefactor this function to reduce its Cognitive Complexity from 22 to the 15 allowed.(«ú›‡8¥¦Íˆ2J$816a750a-9b88-46b6-a8fe-17a90a0423f7
-ipython:S125"Remove this commented out code.(Õ£©şÿÿÿÿ8¥¦Íˆ2J$00d7b110-9c52-444b-8e38-6425f5d57284
-—python:S117š"RRename this parameter "RESPAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(‰Ÿûº8¥¦Íˆ2J$431ce30c-d01b-4fe0-ac13-0fb329462de1
-’python:S107š"MMethod "__init__" has 15 parameters, which is greater than the 13 authorized.(‰Ÿûº8¥¦Íˆ2J$0ed4afc3-f3fa-4295-84d7-2f6940e493c2
-dpython:S125Ä"Remove this commented out code.(õùüô8¥¦Íˆ2J$f0ee60a7-8f88-4575-b08f-7b7aaf1d5ee8
-ipython:S125"Remove this commented out code.(ˆ×è«ıÿÿÿÿ8¥¦Íˆ2J$3ba24891-6f93-4a74-a3b9-f38fac365a25
-ipython:S125³"Remove this commented out code.(˜­Öüÿÿÿÿ8¥¦Íˆ2J$ff1d370e-a89e-47da-9ff0-11e817e871bd
-dpython:S125Ì"Remove this commented out code.(Ôíìã8¥¦Íˆ2J$e0799d7d-7736-48d7-8ab2-bf8de7767fc4
-cpython:S125€"Remove this commented out code.(•à™A8¥¦Íˆ2J$e68e72bc-fa5c-4804-a1c4-42c88768c6d0
-dpython:S125•"Remove this commented out code.(ÅÒÍˆ8¥¦Íˆ2J$51e2476a-894b-4d01-9b30-e3b65f48e6f2
-¤python:S117"ZRename this local variable "RESPANdir" to match the regular expression ^[_a-z][a-z0-9_]*$.(—şÔÿıÿÿÿÿ8¥¦Íˆ2J$2404b7f1-e121-45b2-8e93-4e56d0d88b16
-ipython:S125Ë"Remove this commented out code.(“¤ŸÜÿÿÿÿÿ8¥¦Íˆ2J$27881229-4a6c-444b-bf69-78335378f01a
-œpython:S117½"RRename this parameter "RESPAN" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦¡Éóÿÿÿÿÿ8¥¦Íˆ2J$134f6b9a-e583-4e3e-b25c-27c9b92914ff
-—python:S107½"MMethod "__init__" has 17 parameters, which is greater than the 13 authorized.(¦¡Éóÿÿÿÿÿ8¥¦Íˆ2J$9f0d887b-069e-4db2-ae64-5bbcbe553354
-dpython:S125"Remove this commented out code.(ëĞëñ8¥¦Íˆ2J$bd9efb23-4065-4ceb-a7b0-c00977361be2
-ipython:S125"Remove this commented out code.(÷ÿÃûÿÿÿÿ8¥¦Íˆ2J$a7c83afb-9704-4090-96a7-c355bae8132f
-python:S117³"YRename this local variable "bodyFont" to match the regular expression ^[_a-z][a-z0-9_]*$.(ŞÉØ8¥¦Íˆ2J$7b914e28-01be-43fb-a676-9994be995091
-¤python:S117°"ZRename this local variable "titleFont" to match the regular expression ^[_a-z][a-z0-9_]*$.(™À‰‰úÿÿÿÿ8¥¦Íˆ2J$af2e9930-0ab1-4a27-ac1e-6a7a9116e785

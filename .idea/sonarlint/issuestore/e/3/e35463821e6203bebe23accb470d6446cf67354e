@@ -1,34 +1,0 @@
-
-àpython:S1192±"hDefine a constant instead of duplicating this literal "No images found in the provided folder." 3 times.(á±¯¥8Í¿»„Ü2
-=python:S125("Remove this commented out code.(Ö”µï8Î¿»„Ü2
-Jpython:S11728"+Remove the unused function parameter "log".(ÑËÍ–8Î¿»„Ü2
-Mpython:S1481M"/Remove the unused local variable "final_array".(‘à»8Î¿»„Ü2
-<python:S125J"Remove this commented out code.(â∑ˇS8Î¿»„Ü2
-=python:S125k"Remove this commented out code.(Ö”µï8Î¿»„Ü2
-Lpython:S1172|".Remove the unused function parameter "logger".(≈àñd8Î¿»„Ü2
->python:S125í"Remove this commented out code.(›Õ’ñ8Î¿»„Ü2
-ypython:S117À"ZRename this local variable "minSlices" to match the regular expression ^[_a-z][a-z0-9_]*$.(·É»ç8Î¿»„Ü2
-Cpython:S125À"Remove this commented out code.(ñ›√û¯ˇˇˇˇ8Î¿»„Ü2
-epython:S3457Â"EAdd replacement fields or use a normal string instead of an f-string.(°É¥á8Î¿»„Ü2
-jpython:S3457Ä"EAdd replacement fields or use a normal string instead of an f-string.(≈»íœˇˇˇˇˇ8Î¿»„Ü2
-Cpython:S125ö"Remove this commented out code.(¶ÈåÁˇˇˇˇˇ8Î¿»„Ü2
-=python:S125§"Remove this commented out code.(øøµQ8Î¿»„Ü2
-epython:S3457∏"EAdd replacement fields or use a normal string instead of an f-string.(°É¥á8Î¿»„Ü2
->python:S125”"Remove this commented out code.(”ÄÎˇ8Î¿»„Ü2
-Cpython:S125Ä"Remove this commented out code.(¶ÈåÁˇˇˇˇˇ8Î¿»„Ü2
-=python:S125ä"Remove this commented out code.(øøµQ8Î¿»„Ü2
-Cpython:S125º"Remove this commented out code.(ñ›√û¯ˇˇˇˇ8Î¿»„Ü2
-epython:S3457“"EAdd replacement fields or use a normal string instead of an f-string.(°É¥á8Î¿»„Ü2
-Mpython:S1172◊".Remove the unused function parameter "logger".(£Ω˘u8Ï¿»„Ü2
-Xpython:S1481‰"3Remove the unused local variable "reference_image".(ÆÇœÅ˝ˇˇˇˇ8Ï¿»„Ü2
-Cpython:S125Ì"Remove this commented out code.(Ìëàû¸ˇˇˇˇ8Ï¿»„Ü2
-Cpython:S125"Remove this commented out code.(Èô†âˇˇˇˇˇ8Ï¿»„Ü2
-Spython:S1172˚".Remove the unused function parameter "logger".(‹°›´˙ˇˇˇˇ8Ï¿»„Ü2
->python:S125ì"Remove this commented out code.(ˆçõ˛8Ï¿»„Ü2
-Cpython:S125ö"Remove this commented out code.(Ìëàû¸ˇˇˇˇ8Ï¿»„Ü2
-Cpython:S125ù"Remove this commented out code.(Èô†âˇˇˇˇˇ8Ï¿»„Ü2
-Spython:S1172´".Remove the unused function parameter "logger".(Àù¿∫˚ˇˇˇˇ8Ï¿»„Ü2
-Qpython:S1481‹"1Replace the unused local variable "fig" with "_".(¸˛≥°8Ï¿»„Ü2
->python:S125Ó"Remove this commented out code.(Ö”µï8Ï¿»„Ü2
->python:S125¸"Remove this commented out code.(¬Ü∫Â8Ï¿»„Ü2
-gpython:S1763è"GDelete this unreachable code or refactor the code to make it reachable.(£éé¡8Ï¿»„Ü2
