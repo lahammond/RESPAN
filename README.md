@@ -13,6 +13,15 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 
 ## Running RESPAN
 Download the latest version of the RESPAN Windows executable [here](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1?usp=drive_link). This file is zipped using [7zip](https://www.7-zip.org/). </p> Please allow a minimum of 20GB of disk space for the software and ensure there is sufficient space for processing your data. RESPAN includes lossless compression of image files to ensure a minimal footprint for generated results and validation images.</p>
+Pretrained models for a variety of image modalities are available for download [here]https://drive.google.com/drive/folders/1AguUMNvBPAdCHDsXu8dddV_6twuoNGrz?usp=drive_link) with addition information on each model noted below.
+  
+| Model  | Modality | Resolution | Annotations | Details |
+| ------------- | ------------- | ------------- | ------------- | ------------- |
+| Model 1 | Spinning disk and laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
+| Model 2 | Spinning disk and laser scanning confocal microscopy  | 65 x 65 x 150nm | spines, dendrites, and soma | 28 datasets, no augmentation |
+| Model 3 | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
+| Model 4 | Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 200 datasets, additional augmentation |
+
 For detailed protocols using RESPAN, please refer to [our manuscript.](https://www.biorxiv.org/content/10.1101/2024.06.06.597812)
 
 ## Advantages of RESPAN
