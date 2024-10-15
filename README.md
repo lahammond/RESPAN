@@ -11,7 +11,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
   <img src="images/Panel 2.jpg" alt="RESPAN" width="600">
 </p>
 
-## Download RESPAN
+## Running RESPAN
 Download the latest version of the RESPAN Windows executable [here](). This file is zipped using [7zip](https://www.7-zip.org/). </p> Please allow a minimum of 20GB of disk space for the software and ensure there is sufficient space for processing your data. RESPAN includes lossless compression of image files to ensure a minimal footprint for generated results and validation images.
 
 ## Advantages of RESPAN
@@ -24,10 +24,12 @@ Download the latest version of the RESPAN Windows executable [here](). This file
 *	Model Training: RESPAN includes tabs in the graphical user interface that allow training of CSBDeep, Self-Net, and nnU-Net models, which normally require separate environments using Tensorflow and PyTorch, removing a significant barrier to training and utilizing custom models. 
 
 ## RESPAN Publications
-If you use RESPAN as part of your research, please cite our work using the reference below:
+If you use RESPAN as part of your research, please cite our work using the reference below:</p>
+Sergio B. Garcia, Alexa P. Schlotter, Daniela Pereira, Franck Polleux, Luke A. Hammond. (2024) RESPAN: An Automated Pipeline for Accurate Dendritic Spine Mapping with Integrated Image Restoration. bioRxiv. doi: https://doi.org/10.1101/2024.06.06.597812</p></p>
 
 RESPAN has been used in the following publications:
-has been used in the publications listed below:
+* Baptiste Libé-Philippot, Ryohei Iwata, Aleksandra J. Recupero, Keimpe Wierda, Sergio Bernal Garcia, Luke Hammond, Anja van Benthem, Ridha Limame, Martyna Ditkowska, Sofie Beckers, Vaiva Gaspariunaite, Eugénie Peze-Heidsieck, Daan Remans, Cécile Charrier, Tom Theys, Franck Polleux, Pierre Vanderhaeghen (2024)
+Synaptic neoteny of human cortical neurons requires species-specific balancing of SRGAP2-SYNGAP1 cross-inhibition. Neuron. https://doi.org/10.1016/j.neuron.2024.08.021.
 
 
 ## RESPAN Installation
