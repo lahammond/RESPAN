@@ -3,10 +3,16 @@
 /RESPAN/last_dir.pickle
 /RESPAN/last_dir2.pickle
 /RESPAN/last_dir3.pickle
-/RESPAN/Scripts/build
-/RESPAN/Scripts/dist
+/RESPAN/Scripts/CAREdata
+/RESPAN/CAREparametersGUI.pkl
+/RESPAN/nnUNETparametersGUI.pkl
+/RESPAN/parametersanalysisGUI.pkl
+/RESPAN/SelfNetparametersGUI.pkl
+/RESPAN/parametesrvalGUI.pkl
 /RESPAN/Dist
 /RESPAN/Build
 /RESPAN/External_Scripts
+/RESPAN/.pytest_cache
+/RESPAN/__pycache__
 
 
