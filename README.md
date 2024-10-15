@@ -21,3 +21,31 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 ## Future updates:
 - spine neck analysis
 - track spine morphology and signal intensity over time
+
+## Installation
+
+First, clone this repository:
+
+```bash
+git clone https://github.com/lahammond/RESPAN.git
+```
+
+Then, create a conda environment from `environment.yml` in the top-level directory:
+
+```bash
+cd RESPAN
+conda env create -f environment.yml
+```
+
+Then, install spinepipe as an editable package:
+
+```bash
+pip install -e .
+```
+
+Then, run the GUI:
+
+```bash
+spinepipe-gui
+```
+

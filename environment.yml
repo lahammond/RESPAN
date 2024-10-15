@@ -1,0 +1,15 @@
+name: respan
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  - python=3.9
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1
+  - pip
+  - pyqt
+  - ipython
+  - pip:
+    - nnunetv2==2.3.1
