@@ -15,7 +15,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 Download the latest version of the RESPAN Windows executable [here](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1?usp=drive_link). This file is zipped using [7zip](https://www.7-zip.org/). </p> Please allow a minimum of 20GB of disk space for the software and ensure there is sufficient space for processing your data. RESPAN includes lossless compression of image files to ensure a minimal footprint for generated results and validation images.</p>
 Pretrained models for a variety of image modalities are available for download [here]https://drive.google.com/drive/folders/1AguUMNvBPAdCHDsXu8dddV_6twuoNGrz?usp=drive_link) with addition information on each model noted below.
   
-| Model  | Modality | Resolution | Annotations | Details |
+| Segmentation Model | Modality | Resolution | Annotations | Details |
 | ------------- | ------------- | ------------- | ------------- | ------------- |
 | Model 1 | Spinning disk and laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
 | Model 2 | Spinning disk and laser scanning confocal microscopy  | 65 x 65 x 150nm | spines, dendrites, and soma | 28 datasets, no augmentation |
