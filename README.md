@@ -17,10 +17,9 @@ Pretrained models for a variety of image modalities are available for download [
   
 | Segmentation Model | Modality | Resolution | Annotations | Details |
 | ------------- | ------------- | ------------- | ------------- | ------------- |
-| Model 1 | Spinning disk and laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
-| Model 2 | Spinning disk and laser scanning confocal microscopy  | 65 x 65 x 150nm | spines, dendrites, and soma | 28 datasets, no augmentation |
-| Model 3 | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
-| Model 4 | Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 200 datasets, additional augmentation |
+| Model 1 | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
+| Model 2 | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
+| Model 3 | Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 908 datasets, additional augmentation |
 
 For detailed protocols using RESPAN, please refer to [our manuscript.](https://www.biorxiv.org/content/10.1101/2024.06.06.597812)
 
