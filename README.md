@@ -1,4 +1,4 @@
-# RESPAN: An Automated Pipeline for Accurate Dendritic Spine Mapping with Integrated Image Restoration.
+# RESPAN: A Deep Learning Pipeline for Accurate and Automated Restoration, Segmentation, and Quantification of Dendritic Spines.
 <p align="center">
   <img src="images/Panel 1.jpg" alt="RESPAN" width="600">
 </p>
@@ -12,7 +12,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 </p>
 
 ## Running RESPAN
-Download the latest version of the RESPAN Windows executable [here](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1?usp=drive_link). This file is zipped using [7zip](https://www.7-zip.org/). </p> Please allow a minimum of 20GB of disk space for the software and ensure there is sufficient space for processing your data. RESPAN includes lossless compression of image files to ensure a minimal footprint for generated results and validation images.</p>
+Download the latest version of the RESPAN Windows executable [here](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1?usp=drive_link). This file is zipped using [7zip](https://www.7-zip.org/). </p> Please allow a minimum of 20GB of disk space for the software and ensure there is sufficient space for processing your data. RESPAN includes lossless compression of image files to ensure a minimal footprint for generated results and validation images.</p>For more information and troubleshooting, please refer to our [user guide](https://github.com/lahammond/RESPAN/blob/main/RESPAN%20Guide%202025.pdf).</p>
 Pretrained models for a variety of image modalities are available for download [here](https://drive.google.com/drive/folders/1AguUMNvBPAdCHDsXu8dddV_6twuoNGrz?usp=drive_link) with addition information on each model noted below.
   
 | Segmentation Model | Modality | Resolution | Annotations | Details |
