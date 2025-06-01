@@ -290,7 +290,7 @@ def set_requires_grad(net, requires_grad=False):
         param.requires_grad = requires_grad
 
 
-def train(train_set,netD_A,netD_B,netG_A,netG_B,deblur_net, device,criterionGAN,criterionL1,SSIM_loss,optimD,optimG,optim_deblur, epochs, learning_rate_D, learning_rate_G, batch_size, log_interval, imshow_interval, path, min_v, max_v):
+def train(train_set,netD_A,netD_B,netG_A,netG_B,deblur_net, device,criterionGAN,criterionL1,SSIM_loss,optimD,optimG,optim_deblur, epochs, learning_rate_D, learning_rate_G, batch_size, log_interval, imshow_interval, input_dir, ouput_dir, min_v, max_v, num_batches):
 
 
     lambda_cycle = 1
@@ -454,10 +454,27 @@ def train(train_set,netD_A,netD_B,netG_A,netG_B,deblur_net, device,criterionGAN,
 
                 Loss_deblur = 0.0
 
-            if (i + 1) % imshow_interval == 0:
-                intermediate_output(deblur_net, device, path, min_v, max_v, epoch, (i+1)*batch_size)
-                torch.save(deblur_net.state_dict(),path+'checkpoint/saved_models/' + 'deblur_net_{}_{}'.format (epoch + 1,(i+1)*batch_size) + '.pkl')
+           # if (i + 1) % imshow_interval == 0:
+            #    intermediate_output(deblur_net, device, chkpoint_dir, min_v, max_v, epoch, (i+1)*batch_size)
+            #    torch.save(deblur_net.state_dict(),chkpoint_dir+'/checkpoint/saved_models/' + 'deblur_net_{}_{}'.format (epoch + 1,(i+1)*batch_size) + '.pkl')
 
+            if (i + 1) % imshow_interval == 0 or (i + 1) == num_batches:
+                print('Saving intermediate results and model snapshot... ', flush=True)
+                # visual slice
+
+                intermediate_output(deblur_net, device, input_dir, ouput_dir,
+                                    min_v, max_v, epoch, (i + 1) * batch_size)
+
+                # model snapshot
+                save_dir = os.path.join(ouput_dir, 'saved_models')
+                os.makedirs(save_dir, exist_ok=True)  # guarantees path exists
+                torch.save(
+                    deblur_net.state_dict(),
+                    os.path.join(
+                        save_dir,
+                        f'SelfNet_Epoch_{epoch + 1}_Batch_{(i + 1) * batch_size}.pkl'  # one “checkpoint” in path only
+                    )
+                )
 
 ###############################################################################
 ##### Helper functions for training
@@ -1159,32 +1176,47 @@ class L1_Charbonnier_loss(torch.nn.Module):
         loss = torch.mean(error)
         return loss
     
-def intermediate_output(deblur_net,device,path,min_v,max_v,epoch,iters):
+def intermediate_output(
+        deblur_net,
+        device,
+        input_dir,
+        model_root,# <- pass the *model root* not the checkpoint
+        min_v, max_v,
+        epoch, iters,
+        slice_idx=1):
+
     deblur_net.eval()
-    device_cpu = torch.device('cpu')
+    cpu = torch.device('cpu')
 
-    output_path = path+'checkpoint/'+'intermediate_results/'
-    input_img_path=path+'training_slices/'+'xz/'
+    # 1.  intermediate_results directory  (no double “checkpoint”)
+    vis_dir = os.path.join(model_root, 'intermediate_results')
+    os.makedirs(vis_dir, exist_ok=True)
 
-    index=1 # users define
+    train_slices = os.path.join(input_dir, 'training_slices')
+    #os.makedirs(train_slices, exist_ok=True)
 
-    input_img = imread(input_img_path+str(index)+'.tif')
-    input_img = (input_img.astype(np.float32) - min_v) / (max_v - min_v)
-    input_img[input_img > 1] = 1
-    input_img[input_img < 0] = 0
-    input_img = np.expand_dims(input_img, axis=0)
-    input_img = np.expand_dims(input_img, axis=0)
-    input_tensor = torch.from_numpy(input_img).to(device)
+    # 2.  location of the slice to visualise
+    slice_path = os.path.join(
+        train_slices, 'xz', f'{slice_idx}.tif')
+
+    if not os.path.isfile(slice_path):
+        print(f'   preview slice not found: {slice_path}')
+        deblur_net.train()
+        return                     # fail gracefully instead of crashing
+
+    # 3.  read & normalise
+    img = imread(slice_path).astype(np.float32)
+    img = np.clip((img - min_v) / (max_v - min_v), 0, 1)
+    img = img[None, None, ...]                   # (1,1,H,W)
     with torch.no_grad():
-        net_output = deblur_net(input_tensor)
+        out = deblur_net(torch.from_numpy(img).to(device))
 
-    net_output = net_output.squeeze_(0).squeeze_(0).to(device_cpu).numpy()
-    net_output = net_output * (max_v-min_v)+min_v
-    net_output = np.clip(net_output, 0, max_v)
-    net_output = np.array(net_output, dtype=np.uint16)
+    out = out.squeeze().to(cpu).numpy()          # H,W
+    out = np.clip(out * (max_v - min_v) + min_v, 0, max_v).astype(np.uint16)
 
-    imwrite(output_path + 'Self_net_epoch_{}'.format(epoch + 1) + '_iters_{}_'.format(iters) + str(index)+'.tif',
-                     net_output)
+    # 4.  save
+    fname = f'SelfNet_epoch{epoch+1:03d}_iters{iters}_{slice_idx}.tif'
+    imwrite(os.path.join(vis_dir, fname), out)
 
     deblur_net.train()
     
@@ -1294,14 +1326,12 @@ def create_train_data(train_data_path,batch_size,min_v,max_v):
     return train_data
 
 
-def train_self_net(path, min_v, max_v, batch_size=8, epochs=60, learning_rate_G=1e-4, learning_rate_D=1e-4, beta1=0.5,
+def train_self_net(input_dir, out_path, min_v, max_v, batch_size=8, epochs=60, learning_rate_G=1e-4, learning_rate_D=1e-4, beta1=0.5,
                    beta2=0.999, log_interval=1, imshow_interval=100):
-    checkpoint_path = path + 'checkpoint/'
-    if not os.path.exists(checkpoint_path):
-        os.mkdir(checkpoint_path)
 
-    model_saved_path = checkpoint_path + 'saved_models/'
-    intermediate_results_path = checkpoint_path + 'intermediate_results/'
+
+    model_saved_path = os.path.join(out_path, 'saved_models')
+    intermediate_results_path = os.path.join(out_path, 'intermediate_results')
 
     if not os.path.exists(model_saved_path):
         os.mkdir(model_saved_path)
@@ -1336,71 +1366,14 @@ def train_self_net(path, min_v, max_v, batch_size=8, epochs=60, learning_rate_G=
     optim_deblur = optim.Adam(deblur_net.parameters(), lr=learning_rate_G, betas=(beta1, beta2))
 
     # Load and train the dataset
-    train_set = create_train_data(path + 'train_data/', batch_size, min_v, max_v)
+    train_set = create_train_data(input_dir + 'train_data/', batch_size, min_v, max_v)
+
+    num_batches = len(train_set)
+    imshow_interval = min(imshow_interval, num_batches)
+
     train(train_set, netD_A, netD_B, netG_A, netG_B, deblur_net, device, criterionGAN, criterionL1, SSIM_loss, optimD, optimG, optim_deblur,
-          epochs, learning_rate_D, learning_rate_G, batch_size, log_interval, imshow_interval, path, min_v, max_v)
+          epochs, learning_rate_D, learning_rate_G, batch_size, log_interval, imshow_interval, input_dir, out_path, min_v, max_v,num_batches)
     print('Training complete.', flush=True)
-
-def train_self_net_old(path, min_v, max_v):
-    import argparse
-
-    parser=argparse.ArgumentParser(description='Self_Net')
-    parser.add_argument('--batch_size',type=int,default=8)
-    parser.add_argument('--epochs',type=int,default=60)
-    parser.add_argument('--path', default=path)
-
-    parser.add_argument('--min_v', type=int, default=min_v)
-    parser.add_argument('--max_v', type=int, default=max_v)
-
-    parser.add_argument('--learning_rate_G',type=float,default=1e-4)
-    parser.add_argument('--learning_rate_D', type=float, default=1e-4)
-    parser.add_argument('--beta1',type=float,default=0.5)
-    parser.add_argument('--beta2', type=float, default=0.999)
-    parser.add_argument('--log_interval',type=int,default=1)
-    parser.add_argument('--imshow_interval',type=int,default=100)
-
-    args=parser.parse_args()
-
-    checkpoint_path=args.path+'checkpoint/'
-    if not os.path.exists(checkpoint_path):
-        os.mkdir(checkpoint_path)
-
-    model_saved_path=checkpoint_path+'saved_models/'
-    intermediate_results_path=checkpoint_path+'intermediate_results/'
-
-    if not os.path.exists(model_saved_path):
-        os.mkdir(model_saved_path)
-
-    if not os.path.exists(intermediate_results_path):
-        os.mkdir(intermediate_results_path)
-        
-    device=torch.device('cuda:0')
-
-    input_nc=1
-    output_nc=1
-
-    netD_A = define_D(input_nc=input_nc, ndf=64, netD='n_layers', n_layers_D=2, device=device,norm='instance')
-
-    netD_B = define_D(input_nc=input_nc, ndf=64, netD='n_layers', n_layers_D=2, device=device,norm='instance')
-
-    netG_A = define_G(input_nc=input_nc, output_nc=output_nc, ngf=64, netG='deblur_net', device=device,use_dropout=False,norm='instance')
-    netG_B = define_G(input_nc=input_nc, output_nc=output_nc, ngf=64, netG='deblur_net', device=device,use_dropout=False,norm='instance')
-
-    deblur_net=define_G(input_nc=input_nc, output_nc=output_nc, ngf=64, netG='deblur_net', device=device,use_dropout=False,norm='instance')
-
-    criterionGAN=GANLoss(gan_mode='lsgan').to(device)
-
-    SSIM_loss = SSIM(data_range=1, size_average=True, win_size=11, win_sigma=1.5, channel=1)
-
-    criterionL1=L1_Charbonnier_loss()
-    optimG = optim.Adam(itertools.chain(netG_A.parameters(), netG_B.parameters()),lr=args.learning_rate_G, betas=(args.beta1, args.beta2))
-    optimD=optim.Adam(itertools.chain(netD_A.parameters(),netD_B.parameters()),lr=args.learning_rate_D, betas=(args.beta1, args.beta2))
-    optim_deblur=optim.Adam(deblur_net.parameters(),lr=args.learning_rate_G, betas=(args.beta1, args.beta2))
-
-    train_set=create_train_data(args.path+'train_data/',args.batch_size,args.min_v,args.max_v)
-    train(train_set,netD_A,netD_B,netG_A,netG_B,deblur_net,args,device,criterionGAN,criterionL1,SSIM_loss,optimD,optimG,optim_deblur)
-
-    print('done training!', flush=True)
 
 ###PART 1: Create Slices
 
@@ -1447,6 +1420,8 @@ def main():
     log_interval = args.log_interval
     imshow_interval = args.imshow_interval
 
+    output_dir = os.path.join(model_path, model_name)
+    os.makedirs(output_dir, exist_ok=True)
 
     # Set paths and file name
     # input_dir = 'D:/Project_Data/RESPAN/_Axial_restoration/SelfnetV2/Example_raw_in/'
@@ -1488,6 +1463,7 @@ def main():
 
     train_self_net(
         input_dir,  # Path where the training data is stored
+        output_dir,
         min_v,  # Minimum intensity value
         max_v,  # Maximum intensity value
         batch_size=batch_size,  # Batch size

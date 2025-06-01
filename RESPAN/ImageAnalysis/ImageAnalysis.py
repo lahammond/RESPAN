@@ -11,623 +11,82 @@ __license__   = 'GPL-3.0 License (see LICENSE)'
 __copyright__ = 'Copyright © 2024 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/RESPAN'
 
-import multiprocessing
+
+import sitecustomize
+import RESPAN.ImageAnalysis.Segmentation_and_Restoration as sr
+import RESPAN.ImageAnalysis.IO as io
+import RESPAN.ImageAnalysis.DaskImageAnalysis as dia
+import RESPAN.ImageAnalysis.Tables as tables
+import RESPAN.ImageAnalysis.MemProfiler as mp
+
 import time
 import os
 import numpy as np
 import pandas as pd
 import math
-import warnings
 import re
 import shutil
-import sys
 import gc
+import sys
 
 import memory_profiler
 import psutil
-
-import contextlib
-from pathlib import Path
 import subprocess
-import threading
+
 from collections import defaultdict
+from pathlib import Path
 
-import trimesh
-import pyvista as pv
-from multiprocessing import Pool
-from cupyx.scipy import ndimage as cp_ndimage
-from collections import deque
-from scipy.ndimage import distance_transform_edt, gaussian_filter
-import cupy as cp
-from skimage.graph import route_through_array
 from tifffile import imread, imwrite
-from skimage import measure, morphology, segmentation, exposure, graph #util,  color, data, filters,  exposure, restoration
+
+from skimage.graph import route_through_array
+from skimage import measure, morphology, segmentation, exposure # graph #util,  color, data, filters,  exposure, restoration
 from skimage.transform import resize
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import dijkstra
-from scipy.ndimage import generate_binary_structure
-from scipy import ndimage
-from csbdeep.models import CARE
-from cupyx.scipy.ndimage import binary_dilation
-from scipy.spatial import distance
-from scipy.interpolate import splprep, splev
-
-import RESPAN.Main.Main as main
-import cupy.cuda.runtime as rt
-from scipy.spatial import cKDTree
-from skimage.segmentation import find_boundaries
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from numba import jit
 from skimage.measure import marching_cubes
-from cupyx.scipy.ndimage import label as cp_label
-from cupyx.scipy.sparse import csr_matrix
-from cupyx.scipy.sparse.csgraph import connected_components
-from skimage.graph import MCP_Geometric
+import trimesh
 
-#####
-# to prevent tqdm progress bar conflicting with GUI (CARE predict function issue)
+from scipy import ndimage
+from scipy.ndimage import generate_binary_structure, distance_transform_edt, gaussian_filter
+from scipy.interpolate import splprep, splev
+from scipy.spatial import cKDTree
 
-@contextlib.contextmanager
-def suppress_all_output():
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
-    try:
-        with open(os.devnull, 'w') as devnull:
-            sys.stdout = devnull
-            sys.stderr = devnull
-            yield
-    finally:
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
+import cupy as cp
+import cupy.cuda.runtime as rt
+from cupyx.scipy import ndimage as cp_ndimage
+from cupyx.scipy.ndimage import binary_dilation
+
+import dask as dask
+from dask.distributed import Client, LocalCluster
+
+from numba import jit
+from scipy.spatial import ConvexHull
+
+GB = 1024 ** 3
+
+
 
 ##############################################################################
 # Main Processing Functions
 ##############################################################################
 
-def restore_and_segment(settings, locations, logger):
-
-    if settings.image_restore == True:
-        restore_image(locations.input_dir, settings, locations, logger)
-        data = locations.restored
-
-    if  settings.image_restore == False and settings.axial_restore == True:
-        #restore axial resolution from raw data
-        axial_restore_image(locations.input_dir, settings, locations, logger)
-        data = locations.input_dir + '/selfnet/'
-
-
-    elif settings.image_restore == True and settings.axial_restore == True:
-        #restore axial resolution on CARE restored data
-        axial_restore_image(data, settings, locations, logger)
-        data = locations.input_dir + '/selfnet/'
-
-    else:
-        data = locations.input_dir
-
-    #create nnunet labels
-        # #include options here for alternative unets if required
-    #logger.info(f"Imnporting from dir {data}")
-    log = nnunet_create_labels(data, settings, locations, logger)
-
-    return log
-
-def axial_restore_image(inputdir, settings, locations, logger):
-    logger.info("-----------------------------------------------------------------------------------------------------")
-    logger.info("Performing SelfNet axial restoration neuron channel...")
-    logger.info("   ** Be aware that SelfNet restoration greatly increases file size (up to 10x) **")
-    logger.info("   As a result, storage requirements must account for this, and processing time will be increased accordingly.")
-    #SelfNet Inference
-    # nnunet_env = 'nnunet' # may need to provide conda dir for max compat
-    # model path should be the most recent file in saved models checkpoint
-    # update the training file to take this file and place it somewhere safe
-    # e.g. model_path=input_dir+'checkpoint/saved_models/deblur_net_60_3200.pkl'
-
-    # find most recent pkl file in model_dir and update that to be the model path
-    if settings.selfnet_path != None:
-
-        #parser.add_argument('--input_dir', type=str, required=True, help='The input directory')
-        #parser.add_argument('--neuron_ch', type=int, default=0, help='the channel for inference')
-        #parser.add_argument('--model_path', type=str, required=True, help='The model path')
-        #parser.add_argument('--min_v', type=int, default=0, help='The minimum intensity')
-        #parser.add_argument('--max_v', type=int, default=65535, help='The maximum intensity')
-        #parser.add_argument('--scale', type=float, default=0.21, help='The resolution scaling factor') XY sampling / z step e.g. 75/150 = 0.5
-        #parser.add_argument('--z_step', type=int, default=1, help='The final z-resolution')
-
-        args_dict = {
-            'input_dir': inputdir,
-            'neuron_ch': settings.neuron_channel-1,
-            'model_path': settings.selfnet_path,
-            'min_v': 0,
-            'max_v': 65535,
-            'scale':  settings.input_resXY,
-            'z_step': settings.input_resZ
-        }
-        #logger info all args_dict
-
-        logger.info(f"\n   Input xy-resolution: {settings.input_resXY}. Input Z resolution: { settings.input_resZ}")
-        logger.info(f"   Final z-resolution: {settings.input_resXY}")
-
-        run_external_script(
-            settings.basepath + "\SelfNet_Inference.py",
-            settings.nnUnet_env, args_dict)
-
-
-        #update resolution for remaing calculations
-        settings.input_resZ = settings.input_resXY
-        logger.info(
-            "Restoration complete.")
-        #logger.info(settings.input_resZ)
-
-    else:
-        logger.info("SelfNet model path not found in settings file, update settings file - skipping axial restoration.")
-
-    logger.info(
-       "-----------------------------------------------------------------------------------------------------")
-
-
-def run_external_script(script_path, conda_env, args_dict):
-    args_str = ' '.join(f'--{k} "{v}"' for k, v in args_dict.items())
-    command = f'conda run -n {conda_env} python "{script_path}" {args_str}'
-    process = subprocess.Popen(command, shell=True)
-    process.wait()
-
-
-def selfnet_inference(script_path, respan_env, model_dir, min_v, max_v, scale, z_step, settings):
-    #nnunet_env = 'nnunet' # may need to provide conda dir for max compat
-    #model path should be the most recent file in saved models checkpoint
-    #update the training file to take this file and place it somewhere safe
-    #e.g. model_path=input_dir+'checkpoint/saved_models/deblur_net_60_3200.pkl'
-
-    #find most recent pkl file in model_dir and update that to be the model path
-    args_dict = {
-        'input_dir': input,
-        'model_path': model_dir,
-        'min_v': min_v,
-        'max_v': max_v,
-        'scale': scale,
-        'z_step': z_step
-    }
-    run_external_script(
-                    settings.basepath+"\SelfNet_Inference.py",
-                    settings.nnUnet_env, args_dict)
-
-
-def restore_image (inputdir, settings, locations, logger):
-    logger.info("-----------------------------------------------------------------------------------------------------")
-    logger.info("Restoring images with CARE models...")
-
-    files = [file_i for file_i in os.listdir(inputdir) if file_i.endswith('.tif')]
-    files = sorted(files)
-
-
-
-    for file in range(len(files)):
-        logger.info(f' Restoring image {files[file]} ')
-
-        image = imread(inputdir + files[file])
-        logger.info(f"  Raw data has shape {image.shape}")
-
-        image = check_image_shape(image, logger)
-
-        restored = np.empty((image.shape[0], image.shape[1], image.shape[2], image.shape[3]), dtype=np.uint16)
-
-        for channel in range(image.shape[1]):
-            restore_on = getattr(settings, f'c{channel+1}_restore', None)
-            rest_model_path = getattr(settings, f'c{channel+1}_rest_model_path', None)
-            rest_type = getattr(settings, f'c{channel+1}_rest_type', None)
-            if restore_on == True and rest_model_path != None:
-                logger.info(f"  Restoring channel {channel+1}")
-                logger.info(f"  Restoration model = {rest_model_path}\n  ---")
-
-                channel_image = image[:,channel,:,:]
-
-                #find min int above zero and use this to replace all zero values
-                min_intensity = np.min(channel_image[np.nonzero(channel_image)])
-
-                channel_image = np.where(channel_image == 0, min_intensity, channel_image)
-
-                if rest_type[0] == 'care':
-                    if os.path.isdir(rest_model_path) is False:
-                        raise RuntimeError(rest_model_path, "not found, check settings and model directory")
-                    rest_model = CARE(config=None, name=rest_model_path)
-
-                    #restored = np.empty((channel_image.shape[0], channel_image.shape[1], channel_image.shape[2]), dtype=np.uint16)
-
-                    with suppress_all_output(), main.HiddenPrints():
-
-                        #restore image
-                        restored_channel = rest_model.predict(channel_image, axes='ZYX', n_tiles=settings.tiles_for_prediction)
-
-                        #convert to 16bit
-                        restored_channel= restored_channel.astype(np.uint16)
-
-                        restored[:,channel, :, :] = restored_channel
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            if settings.validation_format == "tif":
-                imwrite(locations.restored+ files[file], restored, compression=('zlib', 1), imagej=True, photometric='minisblack',
-                        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX', 'mode': 'composite'},
-                        resolution=(settings.input_resXY, settings.input_resXY))
-
-    logger.info("Restoration complete.\n\n-----------------------------------------------------------------------------------------------------")
-def check_image_shape(image,logger):
-    if len(image.shape) > 3:
-        #Multichannel input format variability
-        # Enable/modify if issues with different datasets to ensure consistency
-        smallest_axis = np.argmin(image.shape)
-        if smallest_axis != 1:
-            # Move the smallest axis to position 2
-            image = np.moveaxis(image, smallest_axis, 1)
-            logger.info(f"Channels moved ZCYX - raw data now has shape {image.shape}") #ImageJ supports TZCYX order
-    else:
-        image = np.expand_dims(image, axis=1)
-
-    return image
-
-
-class FakeStream(object):
-    def isatty(self):
-        return False
-
-def nnunet_create_labels(inputdir, settings, locations, logger):
-    logger.info(f" Detecting spines and dendrites...")
-    settings.shape_error = False
-    settings.rescale_req = False
-
-    #check if rescaling required and create scaling factors
-    if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY:
-        logger.info(f"  Images will be rescaled to match network.")
-
-        settings.rescale_req = True
-        #z in / z desired, y in / desired ...
-        settings.scaling_factors = (settings.input_resZ/settings.model_resZ,
-                                    settings.input_resXY/settings.model_resXY,
-                                    settings.input_resXY/settings.model_resXY)
-        #settings.inverse_scaling_factors = tuple(1/np.array(settings.scaling_factors))
-
-        logger.info(f"  Scaling factors: Z = {round(settings.scaling_factors[0],2)} Y = {round(settings.scaling_factors[1],2)} X = {round(settings.scaling_factors[2],2)} ")
-
-    #data can be raw data OR restored data so check channels
-
-    files = [file_i
-             for file_i in os.listdir(locations.input_dir)
-             if file_i.endswith('.tif')]
-    files = sorted(files)
-
-    label_files = [file_i
-                   for file_i in os.listdir(locations.labels)
-                   if file_i.endswith('.tif')]
-
-    #create empty arrays to capture dims and padding info
-    settings.original_shape = [None] * len(files)
-    settings.padding_req = np.zeros(len(files))
-
-    if len(files) == len(label_files):
-        logger.info(f"  *Spines and dendrites already detected. \nDelete \Validation_Data\Segmentation_Labels if you wish to regenerate.")
-        stdout = None
-        settings.prev_labels = True
-
-        return_code = 0
-    else:
-
-        #Prepare Raw data for nnUnet
-
-        # Initialize reference to None - if using histogram matching
-        #logger.info(f" Histogram Matching is set to = {settings.HistMatch}")
-        reference_image = None
-        settings.prev_labels = False
-
-        for file in range(len(files)):
-            logger.info(f"   Preparing image {file+1} of {len(files)} - {files[file]}")
-
-            image = imread(inputdir + files[file])
-            logger.info(f"   Raw data has shape: {image.shape}")
-
-            image = check_image_shape(image, logger)
-
-            if settings.axial_restore == True:
-                neuron = image[:,0,:,:]
-            else:
-                neuron = image[:,settings.neuron_channel-1,:,:]
-
-            # rescale if required by model        
-            if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY:
-                settings.original_shape[file] = neuron.shape
-                #new_shape = (int(neuron.shape[0] * settings.scaling_factors[0]), neuron.shape[1] * settings.scaling_factors[1]), neuron.shape[2] * settings.scaling_factors[2]))
-                new_shape = tuple(int(dim * factor) for dim, factor in zip(neuron.shape, settings.scaling_factors))
-                neuron = resize(neuron, new_shape, mode='constant', preserve_range=True, anti_aliasing=True)
-                logger.info(f"   Data rescaled to match model for labeling has shape: {neuron.shape}")
-
-            # logger.info the  it will take for processing image by dividing the number of pixels by a scaling factor
-            #limit variable to 2 decimal places
-
-            logger.info(f"    Estimated time to detect spines and dendrites for this image: {round(neuron.size * 2.5e-8,2)} minutes.\n")
-            if neuron.shape[0] < 5:
-                #settings.shape_error = True
-                #logger.info(f"  !! Insufficient Z slices - please ensure 5 or more slices before processing.")
-                #logger.info(f"  File has been moved to \\Not_processed and excluded from processing.")
-                #if not os.path.isdir(inputdir+"Not_processed/"):
-                #    os.makedirs(inputdir+"Not_processed/")
-                #os.rename(inputdir+files[file], inputdir+"Not_processed/"+files[file])
-
-
-                #Padding and flag this file as padded for unpadding later
-                # Pad the array
-                settings.padding_req[file] = 1
-                neuron = np.pad(neuron, pad_width=((2, 2), (0, 0), (0, 0)), mode='constant', constant_values=0)
-                logger.info(f"   Too few Z-slices, padding to allow analysis.")
-
-            if settings.HistMatch == True:
-                # If reference_image is None, it's the first image.
-                if reference_image is None:
-                    #neuron = contrast_stretch(neuron, pmin=0, pmax=100)
-                    reference_image = neuron
-                else:
-                   # Match histogram of current image to the reference image
-                   neuron = exposure.match_histograms(neuron, reference_image)
-
-            #logger.info(f" ")
-            #save neuron as a tif file in nnUnet_input - if file doesn't end with 0000 add that at the end
-            name, ext = os.path.splitext(files[file])
-
-            if not name.endswith("0000"):
-                name += "_0000"
-
-            new_filename = name + ext
-
-            filepath = locations.nnUnet_input+new_filename
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                imwrite(filepath, neuron.astype(np.uint16), compression=('zlib', 1), imagej=True, photometric='minisblack',
-                        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
-                        resolution=(settings.input_resXY, settings.input_resXY), )
-
-
-        #Run nnUnet over prepared files
-        #initialize_nnUnet(settings)
-
-        # split the path into subdirectories
-        subdirectories = os.path.normpath(settings.neuron_seg_model_path).split(os.sep)
-        last_subdirectory = subdirectories[-1]
-        # find all three digit sequences in the last subdirectory
-        matches = re.findall(r'\d{3}', last_subdirectory)
-        # If there's a match, assign it to a variable
-        dataset_id = matches[0] if matches else None
-
-
-        logger.info("\n  Performing spine and dendrite detection on GPU...")
-
-        ##uncomment if issues with nnUnet
-        #logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
-
-
-
-
-        return_code = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env,
-                                        locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, settings, logger)
-
-
-        #logger.info(cmd)
-
-        ##uncomment if issues with nnUnet
-        #result = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env, locations.nnUnet_input, locations.labels, dataset_id, settings.nnUnet_type, locations,settings)
-
-        '''
-        # Add environment to the system path
-        #os.environ["PATH"] = settings.nnUnet_env_path + os.pathsep + os.environ["PATH"]
-    
-        #python = settings.nnUnet_env_path+"/python.exe"
-    
-        #result = subprocess.run(['nnUNetv2_predict', '-i', locations.nnUnet_input, '-o', locations.labels, '-d', dataset_id, '-c', settings.nnUnet_type, '-f', 'all'], capture_output=True, text=True)
-        #command = 'nnUNetv2_predict -i ' + locations.nnUnet_input + ' -o ' + locations.labels + ' -d ' + dataset_id + ' -c ' + settings.nnUnet_type + ' -f all']
-        
-        #command = [python, "-m", "nnUNetv2_predict", "-i", locations.nnUnet_input, "-o", locations.labels, "-d", dataset_id, "-c", settings.nnUnet_type, "-f", "all"]
-        #result = run_command_in_conda_env(command, settings.env ,settings.python)
-        #result = subprocess.run(command, capture_output=True, text=True)
-    
-        #logger.info(result.stdout)  # This is the standard output of the command.
-        #logger.info(result.stderr)  # This is the error output of the command. 
-        '''
-        #logger.info(stdout)
-
-        #delete nnunet input folder and files
-        if settings.save_intermediate_data == False and settings.Track == False:
-            if os.path.exists(locations.nnUnet_input):
-                shutil.rmtree(locations.nnUnet_input)
-
-        #Clean up label folder
-
-        if os.path.exists(locations.labels):
-            # iterate over all files in the directory
-            for filename in os.listdir(locations.labels):
-                # check if the file is not a .tif file
-                if not filename.endswith('.tif'):
-                    # construct full file path
-                    file_path = os.path.join(locations.labels, filename)
-                    # remove the file
-                    if os.path.isfile(file_path):
-                        os.remove(file_path)
-
-
-        #if tracking over time then we want unpad and match how the labels will appear
-
-        files = [file_i
-                 for file_i in os.listdir(locations.labels)
-                 if file_i.endswith('.tif')]
-        files = sorted(files)
-
-        for file in range(len(files)):
-            #if file == 0: logger.info(' Unpadding and rescaling neuron channel for registration and time tracking...')
-
-            # Unpad if padded # later update - these can be included in Unet processing stage to simplify!
-            if settings.padding_req[file] == 1: #and settings.prev_labels == False and settings.original_shape[0] != None:
-                logger.info(f"  Unpadding image {files[file]}")
-                image = imread(locations.labels + files[file])
-                image = image[2:-2, :, :]
-
-                logger.info(f"  Image {files[file]} has shape: {image.shape}")
-
-                imwrite(locations.labels + files[file], image.astype(np.uint8), compression=('zlib', 1), imagej=True,
-                        photometric='minisblack',
-                        metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX', 'mode': 'composite'},
-                        resolution=(settings.input_resXY, settings.input_resXY))
-
-                logger.info(f"  Image {files[file]} has been unpaded and saved to {locations.labels}")
-
-                #Unpad if padded
-                #if settings.padding_req[file] == 1:
-                #    image = image[2:-2, :, :]
-                #image = imread(locations.nnUnet_input + files[file])
-                #logger.info(f"  Image {files[file]} has shape: {image.shape}")
-
-
-
-                # rescale labels back up if required
-                #if settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY:
-                    #logger.info(f"orignal settings shape: {settings.original_shape[file]}")
-                #    image = resize(image, settings.original_shape[file], order=0, mode='constant', preserve_range=True, anti_aliasing=None)
-                    #logger.info(f"image resized: {labels.shape}")
-
-                #    imwrite(locations.nnUnet_input + files[file], image.astype(np.uint8), imagej=True, photometric='minisblack',
-                 #           metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX', 'mode': 'composite'},
-                  #          resolution=(settings.input_resXY, settings.input_resXY))
-
-
-    #logger.info("Segmentation complete.\n")
-    logger.info("\n-----------------------------------------------------------------------------------------------------")
-    return return_code
-
-def run_nnunet_predict(conda_dir, nnUnet_env, input_dir, output_dir, dataset_id, nnunet_type, settings, logger):
-    # Set environment variables
-
-    initialize_nnUnet(settings, logger)
-
-    activate_env = fr"{conda_dir}\Scripts\activate.bat {nnUnet_env }&& set PATH={settings.nnUnet_env_path}/{nnUnet_env}/Scripts;%PATH%"
-
-    # Define the command to be run
-    #cmd = "nnUNetv2_predictRESPAN -i \"{}\" -o \"{}\" -d {} -c {} -f all".format(input_dir, output_dir, dataset_id, nnunet_type)
-    cmd = "nnUNetv2_predict -i \"{}\" -o \"{}\" -d {} -c {} -f all".format(input_dir, output_dir, dataset_id,
-                                                                                 nnunet_type)
-
-    # Combine the activate environment command with the actual command
-    final_cmd = f'{activate_env} && {cmd}'
-
-    return_code, stdout_out, stderr_out = run_process_with_logging(final_cmd, logger)
-    # Run the command
-    if return_code != 0:
-        logger.info(f"Error: Command failed with return code {return_code}")
-        if stderr_out:
-            logger.info(f"Error message:\n{stderr_out}")
-        if stdout_out:
-            logger.info(f"Output message:\n{stdout_out}")
-
-    #process = subprocess.Popen(final_cmd, shell=True)
-    #stdout, stderr = process.communicate()
-    return return_code
-
-
-'''
-def log_output(pipe, logger, buffer):
-    for line in iter(pipe.readline, '' if isinstance(pipe, io.TextIOWrapper) else b''):
-        if isinstance(line, bytes):
-            decoded_line = line.decode().strip()
-        else:
-            decoded_line = line.strip()
-
-        # Append all output to the buffer
-        buffer.append(decoded_line + '\n')
-
-        if (decoded_line.lower().startswith(("predicting", "done")) or
-                re.match(r'^\d+', decoded_line)):
-            logger.info(" " + decoded_line)
-            print(decoded_line, flush=True)  # Print to terminal in real-time
-'''
-
-
-def clean_percentage_line(line):
-    # Extract percentage and time
-    match = re.search(r'(\d+)%.*?([\d:]+)', line)
-    if match:
-        percentage, time = match.groups()
-        return f"{percentage}% [Time left: {time}]"
-    return line
-
-
-def log_output(pipe, logger, buffer):
-    while True:
-        try:
-            line = pipe.readline()
-            if not line:
-                break
-
-            if isinstance(line, bytes):
-                try:
-                    decoded_line = line.decode('utf-8').strip()
-                except UnicodeDecodeError:
-                    decoded_line = line.decode('latin-1', errors='replace').strip()
-            else:
-                decoded_line = line.strip()
-
-            # Append all output to the buffer
-            buffer.append(decoded_line + '\n')
-            print50 = 0
-            # Clean and filter the output
-            if "%" in decoded_line:
-                cleaned_line = clean_percentage_line(decoded_line)
-                if "50%" in cleaned_line and print50 == 0:# or "100%" in cleaned_line:
-                    logger.info(f"   {cleaned_line}")
-                    print(cleaned_line, flush=True)
-                    print50 = 1
-            elif decoded_line.lower().startswith(("predicting", "done")) or re.match(r'^\d+', decoded_line):
-                logger.info(f"   {decoded_line}")
-                print(decoded_line, flush=True)
-
-        except Exception as e:
-            print("")
-            #print(f"Error processing line: {str(e)}", flush=True)
-            #logger.error(f"Error processing line: {str(e)}")
-
-def run_process_with_logging(cmd, logger):
-    #process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) #buffsize=1
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, bufsize=1,
-                               universal_newlines=True)
-
-    stdout_buffer = []
-    stderr_buffer = []
-
-    # Start threads to read stdout and stderr
-    stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger, stdout_buffer))
-    stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger, stderr_buffer))
-
-    stdout_thread.start()
-    stderr_thread.start()
-
-    # Wait for the process to complete
-    process.wait()
-
-    stdout_thread.join()
-    stderr_thread.join()
-
-    # Wait for the output threads to finish
-    stdout_output = ''.join(stdout_buffer)
-    stderr_output = ''.join(stderr_buffer)
-
-    return process.returncode, stdout_output, stderr_output   #process.stderr.read().decode().strip()
-
-
-def initialize_nnUnet(settings, logger):
-    #not worrying about setting raw and processed, as not needed and would rquire additional params for user/settings file
-    #os.environ['nnUNet_raw'] = settings.nnUnet_raw
-    #os.environ['nnUNet_preprocessed'] = settings.nnUnet_preprocessed
-    nnUnet_results = Path(settings.neuron_seg_model_path).parent
-    nnUnet_results = str(nnUnet_results).replace("\\", "/")
-    os.environ['nnUNet_results'] = nnUnet_results
-
-
 
 def analyze_spines(settings, locations, log, logger):
-    logger.info("Analyzing spines...")
+    if settings.dask_enabled:
+        try:  # already started elsewhere?
+            client = dask.distributed.get_client()
+        except ValueError:  # no client yet
+            client, cluster = dia.start_local_cluster(
+                max_workers = None,
+                target_ram_frac = None,
+                worker_mem="8GB",  # many small workers
+                threads_per_worker=2,  # light processes
+                  # optional upper bound
+                tmp_dir = None,
+                logger=logger,
+                simulate = None, # or "low" for low mem
+            )
+
+    else:
+        logger.info("Analyzing spines...")
     #spines = 1
     #dendrites = 2
     #soma = 3
@@ -647,17 +106,68 @@ def analyze_spines(settings, locations, log, logger):
         #logger.info(log)
         raise RuntimeError("Number of raw and label images are not the same - check data.")
 
+
+
     spine_summary = pd.DataFrame()
 
     for file in range(len(files)):
         logger.info(f' Analyzing image {file+1} of {len(files)} \n  Raw Image: {files[file]} & Label Image: {label_files[file]}')
 
         settings.filename = files[file].replace(".tif", "")
-        image = imread(locations.input_dir + files[file])
-        labels = imread(locations.labels + files[file]) # use original file name to ensure correct image regardless of sorting
+
+        if settings.dask_enabled == True:
+
+            if settings.resave_omezarr:
+                    logger.info(f"  Resaving files as OME.Zarr for quick access using Dask...")
+            logger.info(f"  Resaving raw image data...")
+
+            image, raw_zarr_root  = dia.open_tiff_as_dask(
+                locations.input_dir + files[file],
+                client=client,
+                chunks=settings.dask_block,
+                pixel_sizes=(
+                    None,  # C – unknown
+                    settings.input_resZ,
+                    settings.input_resXY,
+                    settings.input_resXY,
+                ),
+                resave=settings.resave_omezarr,
+                settings=settings,
+                logger =  logger
+            )
+            logger.info(f"  Resaving labels data...")
+            #image = dia.open_tiff_as_dask(locations.input_dir + files[file])
+            labels, _  = dia.open_tiff_as_dask(
+                locations.labels + files[file],
+                client=client,
+                chunks=image.chunks,  # match raw grid *now*
+                pixel_sizes=None,  # voxels only
+                resave=settings.resave_omezarr,
+                settings=settings,
+                logger=logger
+            )
+            #labels = dia.open_tiff_as_dask(locations.labels + files[file]).rechunk(image.chunks)
+            if len(labels.shape) == 4:  # Check if it has a channel dimension (CZYX)
+                labels = labels[0, :, :, :]  # remove channel dimension
+                logger.info(f"  Removed channel dimension from labels, new shape: {labels.shape}") # remove channel dimension
+            image = image.persist()
+            labels = labels.persist()
+
+        else:
+            image = imread(locations.input_dir + files[file])
+            labels = imread(locations.labels + files[file]) # use original file name to ensure correct image regardless of sorting
 
         logger.info(f"  Raw shape: {image.shape} & Labels shape: {labels.shape}")
+        #print image size in GB, with comma between thousands
+        image_GB = image.nbytes / 1e9
 
+        logger.info(f"  Raw image size: {image_GB:.3f} GB")
+        if image_GB > 2 and settings.resave_omezarr == False:
+            logger.info(f"  *Note, as the dataset is over 2GB, we recommend enabling Dask for efficient processing. ")
+
+        if image_GB > 2 and settings.Vaa3d == True:
+                    logger.info(f"\n\n  Automated Vaa3D SWC generation is disabled for images over 2GB. We recommend using Simple Neurite Tracer in ImageJ with"
+                        f"\n  the neuron segmentation masks from RESPAN to generate SWC files.\n")
 
         # if using axial resotration - image needs to be scaled to match the labels
         if settings.axial_restore == True:
@@ -677,7 +187,7 @@ def analyze_spines(settings, locations, log, logger):
 
             logger.info(f"  Due to axial restoration, image rescaled to match labels: {image.shape}")
 
-        # rescale labels back up if required    
+        # rescale labels back up if required
 
         if settings.axial_restore == False:
             if settings.original_shape[0] != None and settings.input_resZ != settings.model_resZ or settings.input_resXY != settings.model_resXY and settings.prev_labels == False:
@@ -691,7 +201,7 @@ def analyze_spines(settings, locations, log, logger):
 
 
         #process images through Vaa3d
-        if settings.Vaa3d == True and os.path.exists(settings.Vaa3Dpath):
+        if settings.Vaa3d and image_GB < 2 and os.path.exists(settings.Vaa3Dpath) :
             logger.info(f"  Creating SWC file using Vaa3D...")
             create_dir(locations.swcs)
             if os.path.exists(locations.swcs + files[file]+".swc"):
@@ -727,8 +237,12 @@ def analyze_spines(settings, locations, log, logger):
         #if settings.analysis_method == "Dendrite Specific":
         #    spine_summary = spine_and_dendrite_processing(image, labels, spine_summary, settings, locations, files[file], log, logger)
         #else:
-        spine_summary = spine_and_whole_neuron_processing(image, labels, spine_summary, settings, locations, files[file], log, logger)
-
+        if settings.dask_enabled == True:
+            spine_summary = dia.spine_and_whole_neuron_processing(image, labels, spine_summary, raw_zarr_root, settings, locations,
+                                                                  files[file].replace(".tif",""), log, logger)
+        else:
+            spine_summary = spine_and_whole_neuron_processing(image, labels, spine_summary, settings, locations,
+                                                              files[file].replace(".tif", ""), log, logger)
 
         if settings.shape_error == True:
             logger.info(f"!!! One or more images moved to \\Not_Processed due to having\nless than 5 Z slices. Please modify these files before reprocessing.\n")
@@ -737,71 +251,761 @@ def analyze_spines(settings, locations, log, logger):
 
     logger.info("RESPAN analysis complete.")
 
-def associate_spines_with_necks_gpu_optimized(spines, necks, logger, max_overlap=25, batch=50):
-    # Convert to CuPy arrays
-    labeled_spines_cp = cp.array(spines)
-    necks_cp = cp.array(necks > 0)
+@mp.profile_mem()
+def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings, locations, filename, log, logger):
+    time_initial = time.time()
 
-    # Create a structuring element (3x3x3 cube) for dilation
-    struct_elem = cp.ones((3, 3, 3), dtype=cp.bool_)
+    # log_memory_usage(logger)
 
-    volume_shape = labeled_spines_cp.shape
+    neuron = image[:, settings.neuron_channel - 1, :, :]
 
-    # Get bounding boxes for each labeled region
-    props = measure.regionprops(cp.asnumpy(labeled_spines_cp))
-    bboxes = [prop.bbox for prop in props]
+    if neuron.size > 1e8:
+        logger.info(
+            f"   The neuron channel for this image is ~{neuron.size / 1e9:.2f} GB in size. This may take considerable time to process.")
+        logger.info(
+            f"   Estimated processing time is ~{round(neuron.size * 2.5e-8, 0)} minutes, depending on computational resources.")
 
-    # Initialize the result array
-    result = cp.zeros_like(labeled_spines_cp)
+        # temp size limits
+    if neuron.size > 1e9:
+        logger.info(
+            f"    *Note, as the dataset is over 1GB, full 3D validation data export has been disabled (as these volumes can be 20x raw input)."
+            f"\n    If using Dask, OME-Zarr files can be viewed in a Zarr Viewer. Otherwise, to generate 3D validation datasets, please isolate specific regions of the dataset and process separately.")
+        #logger.info(
+          #  f"    Due to the size of this image volume, neck generation features are currently unavailable.")
+        settings.neck_analysis = False
+        settings.mesh_analysis = True
+        settings.save_val_data = False
+    else:
+        settings.neck_analysis = True
+        settings.mesh_analysis = True
 
-    # Process each labeled region
-    for label_id, bbox in enumerate(bboxes, start=1):
-        # Calculate the expansion amount for each dimension
-        expansions = [
-            min(max_overlap, bbox[0]),  # top
-            min(max_overlap, bbox[1]),  # left
-            min(max_overlap, bbox[2]),  # front
-            min(max_overlap, volume_shape[0] - bbox[3]),  # bottom
-            min(max_overlap, volume_shape[1] - bbox[4]),  # right
-            min(max_overlap, volume_shape[2] - bbox[5])  # back
-        ]
+    if settings.model_type == 1:
+        spines = (labels_vol == 1)
+        dendrites = (labels_vol == 2)
+        soma = (labels_vol == 3)
+    elif settings.model_type == 2:
+        dendrites = (labels_vol == 1)
+        soma = (labels_vol == 2)
+        spines = (labels_vol == 10)  # create an empty volume for spines
+    elif settings.model_type == 3:
+        spines = (labels_vol == 1)
+        dendrites = (labels_vol == 2)
+        soma = (labels_vol == 3)
+        necks = (labels_vol == 4)
 
-        # Expand the bounding box within limits
-        expanded_bbox = [
-            bbox[0] - expansions[0],
-            bbox[1] - expansions[1],
-            bbox[2] - expansions[2],
-            bbox[3] + expansions[3],
-            bbox[4] + expansions[4],
-            bbox[5] + expansions[5]
-        ]
+    elif settings.model_type == 4:
+        dendrites = (labels_vol == 1)
+        spine_cores = (labels_vol == 2)
+        spine_membranes = (labels_vol == 3)
+        necks = (labels_vol == 4)
+        soma = (labels_vol == 5)
+        axons = (labels_vol == 6)
+        spines = spine_cores + spine_membranes
 
-        # Extract the region of interest
-        spine_roi = labeled_spines_cp[expanded_bbox[0]:expanded_bbox[3],
-                    expanded_bbox[1]:expanded_bbox[4],
-                    expanded_bbox[2]:expanded_bbox[5]]
-        neck_roi = necks_cp[expanded_bbox[0]:expanded_bbox[3],
-                   expanded_bbox[1]:expanded_bbox[4],
-                   expanded_bbox[2]:expanded_bbox[5]]
+    del labels_vol
+    gc.collect()
+    # filter dendrites
+    logger.info("   Filtering dendrites...")
 
-        # Process the region
-        growth_occurred = True
-        while growth_occurred:
-            dilated_spine = binary_dilation(spine_roi == label_id, structure=struct_elem)
-            new_growth = dilated_spine & neck_roi & (spine_roi == 0)
-            spine_roi = cp.where(new_growth, label_id, spine_roi)
-            growth_occurred = new_growth.any()
+    labeled_dendrites = filter_dendrites(dendrites, settings, logger)
+    if np.max(labeled_dendrites) > 0:
 
-        # Update the result
-        result[expanded_bbox[0]:expanded_bbox[3],
-        expanded_bbox[1]:expanded_bbox[4],
-        expanded_bbox[2]:expanded_bbox[5]] = spine_roi
+        if np.max(soma) == 0:
+            # label and filter soma
+            soma_distance = soma
+        else:
+            logger.info("   Calculating soma distance...")
+            # soma_distance = ndimage.distance_transform_edt(np.invert(soma))
+            soma_distance = adaptive_distance_transform(soma, logger)
 
-        # Log the expansion for this spine
-        logger.info(f"Processed spine {label_id} with expansions: {expansions}")
+        # logger.info(f"   Processing {np.max(filt_dendrites)} dendrites...")
+        # Create Distance Map
+        logger.info("   Calculating distances from dendrites...")
+        # dendrite_distance = ndimage.distance_transform_edt(np.invert(labeled_dendrites > 0)) #invert neuron mask to get outside distance
+        dendrite_distance = adaptive_distance_transform(labeled_dendrites > 0, logger)
+        logger.info("   Calculating dendrite skeleton...")
+        dendrites_mask = (labeled_dendrites > 0).astype(np.uint8)  # changed from dendrites
+        skeleton = morphology.skeletonize(dendrites_mask)
 
-    return result.get()
+        # if settings.save_val_data == True:
+        #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
 
+        # Create Neuron MIP for validation - include distance map too
+        # neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
+        # neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
+        logger.info(f"    Time taken for initial processing: {time.time() - time_initial:.2f} seconds\n")
+        # Spine Detection
+        logger.info("   Analyzing spines...")
+        model_options = ["Spines, Dendrites, and Soma", "Dendrites and Soma Only", "Necks, Spines, Dendrites, and Soma",
+                         "Dendrites, Spine Cores, Spine Membranes, Necks, Soma, and Axons"]
+        logger.info(f"    Using model type {model_options[settings.model_type - 1]}")
+        if settings.model_type <= 3:
+            spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders,
+                                           logger)  # binary image, erosion value (0 for no erosion)
+        else:
+            logger.info("    Analyzing spines using cores and membranes...")
+            spine_labels = spine_detection_cores_and_membranes(spine_cores, spine_membranes,
+                                                               settings.remove_touching_boarders, logger,
+                                                               settings)  # binary image, erosion value (0 for no erosion)
+
+        # now we have spine_labels and connected_necks for all spines for futher processing and measurements
+
+        # logger.info(f" {np.max(spine_labels)}.")
+        # max_label = np.max(spine_labels)
+
+        # Measurements
+        # Create 4D Labels
+        # imwrite(locations.tables + 'Detected_spines.tif', spine_labels.astype(np.uint16), imagej=True, photometric='minisblack',
+        #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
+        time_spine = time.time()
+
+        # spine_table, spines_filtered = spine_measurementsV2(image, spine_labels, 1, 0, settings.neuron_channel, dendrite_distance, soma_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
+
+        spine_table, spines_filtered = initial_spine_measurements(image, spine_labels, 1, 0, settings.neuron_channel,
+                                                                  dendrite_distance,
+                                                                  settings.neuron_spine_size,
+                                                                  settings.neuron_spine_dist,
+                                                                  settings, locations, filename, logger)
+
+        logger.info(f"     Time taken for initial spine detection: {time.time() - time_spine:.2f} seconds")
+        # spine_table, spines_filtered = spine_measurementsV1(image, spine_labels, settings.neuron_channel, dendrite_distance, soma_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
+
+        # Create 4D Labels
+        # imwrite(locations.tables + 'Detected_spines_filtered.tif', spines_filtered.astype(np.uint16), imagej=True, photometric='minisblack',
+        #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})                                                  #soma_mask, soma_distance, )
+
+        logger.info("\n    Calculating spine necks...")
+        time_neck_connection = time.time()
+
+        # disable neck analysis for very large datasets
+        if settings.neck_analysis == False:
+            logger.info(f"     Image shape is {spines_filtered.shape}. Neck analysis has been disabled.")
+            connected_necks = np.zeros_like(spines_filtered)
+        else:
+            if settings.model_type >= 3:
+                neck_labels = measure.label(necks)
+
+                # associate spines with necks
+                logger.info("     Associating spines with necks...")
+                neck_labels_updated = associate_spines_with_necks_gpu(spines_filtered, neck_labels, logger)
+                # save this as a tif
+                # imwrite(locations.Vols + 'Detected_necks.tif', neck_labels_updated.astype(np.uint16), imagej=True,
+                #           photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
+
+                # unassociated neck voxels
+                remaining_necks = (neck_labels) & (neck_labels_updated == 0)
+
+                # imwrite(locations.Vols + 'remaining_necks.tif', remaining_necks.astype(np.uint16), imagej=True,
+                #        photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
+                # extend spines with necks to dendrite
+                # background = label == 0
+                # traversable_for_necks = remaining_necks | labels == 0
+                # = (remaining_necks + dendrites) == 0
+                target = (dendrites_mask + (remaining_necks > 0)) - neck_labels_updated > 0
+
+                # Extend connected necks to neck on dendrite or directly to dendrite
+                # currently can have paths crossing existing labels - need ensure these paths go around existing labels
+                #
+                logger.info("     Extending necks to dendrites...")
+                extended_necks = extend_objects_GPU(neck_labels_updated, target, neuron, settings, locations,
+                                                    logger)
+                extended_necks = np.where(neck_labels_updated == 0, extended_necks, 0)
+                # imwrite(locations.Vols + 'extended_necks.tif', extended_necks.astype(np.uint16), imagej=True,
+                #        photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
+
+                # associate extended_necks with  remaining_necks
+                logger.info("     Associating extended necks with remaining necks...")
+                connected_necks = associate_spines_with_necks_gpu((extended_necks + neck_labels_updated),
+                                                                  remaining_necks, logger)
+
+                connected_necks = connected_necks - spines_filtered
+                connected_necks = np.where(dendrites_mask == 0, connected_necks, 0)
+                # imwrite(locations.Vols + 'connected_necks.tif', connected_necks.astype(np.uint16), imagej=True,
+                #        photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
+
+                # extend spines without necks
+                # spines_without_necks = spine_labels.copy()
+                # spines_without_necks[extended_necks > 0] = 0  # Remove spines that have necks
+
+                # Update traversable mask to include extended B objects
+                # traversable_for_necks = remaining_necks | dendrites
+                # extended_spines = extend_objects(spines_without_necks, dendrites, traversable_for_necks)
+                # extended_spines = extend_objects_GPU(spines_filtered, dendrites, neuron, settings, locations,
+                #                   logger)
+                # Combine extended A and B objects
+                # connected_necks = np.maximum(extended_spines, extended_necks)
+
+            else:
+                # traversable_for_necks = dendrites == 0
+                logger.info("     Extending spines to dendrites...")
+                connected_necks = extend_objects_GPU(spines_filtered, dendrites_mask, neuron, settings, locations,
+                                                     logger)
+
+        # time for neck connection
+        logger.info(f"     Time taken for neck generation: {time.time() - time_neck_connection:.2f} seconds")
+        # logger.info(connected_necks.shape)
+        # Remove spines that are connected to necks
+        # connected_necks[spine_labels > 0] = 0
+
+        # Second pass analysis
+        # take spines(necks and spines filtered) create subvolumes, mask with a 5 pixel dilation and pass through the 2nd pass model
+        if settings.second_pass:
+            logger.info("     Running spine refinement...")
+            if settings.refinement_model_path != None:
+                spines_filtered, connected_necks = second_pass_annotation(spines_filtered, connected_necks,
+                                                                          dendrites_mask, neuron,
+                                                                          locations, settings, logger)
+            else:
+                logger.info(
+                    "Spine refinement model not found. Skipping second pass annotation. Please update location of second pass model in settings file to enable second pass annotation.")
+
+        # log_memory_usage(logger)
+
+        # calulating dendrite statistics ###### CLEAN UP WHOLE NEURON AND KEEP DEND STATS
+        # logger.info("\n    Calculating dendrite statistics...")
+        # originally whole neuron stats but now calculating dendrite specific
+
+        logger.info("     Calculating neuron statistics...")
+        neuron_length = np.sum(skeleton == 1)
+        neuron_volume = np.sum(dendrites_mask == 1)
+
+        del dendrites_mask
+
+        logger.info("     Calculating dendrite statistics...")
+        # get dendrite lengths and volumes as dictoinaries
+        dendrite_lengths, dendrite_volumes, skeleton_coords, labeled_skeletons = calculate_dendrite_length_and_volume_fast(
+            labeled_dendrites, skeleton, logger)
+
+        # finished calculating dendrite statistics
+        logger.info("      Complete.")
+
+        logger.info("     Calculating spine dendrite ID and geodesic distance...")
+        if np.max(soma) == 0:
+            spine_dendID_and_geodist, geodesic_distance_image = calculate_dend_ID_and_geo_distance(labeled_dendrites,
+                                                                                                   spines_filtered,
+                                                                                                   skeleton_coords,
+                                                                                                   labeled_skeletons,
+                                                                                                   filename, locations,
+                                                                                                   soma_vol=None,
+                                                                                                   settings=settings)
+        else:
+            spine_dendID_and_geodist, geodesic_distance_image = calculate_dend_ID_and_geo_distance(labeled_dendrites,
+                                                                                                   spines_filtered,
+                                                                                                   skeleton_coords,
+                                                                                                   labeled_skeletons,
+                                                                                                   filename, locations,
+                                                                                                   soma_vol=soma,
+                                                                                                   settings=settings)
+
+        # save spine dendrite ID and geodesic distance as csv using pands
+        # spine_dendID_and_geodist.to_csv(locations.tables + 'Detected_spines_dendrite_ID_and_geodesic_distance_' + filename + '.csv', index=False)
+
+        logger.info("      Complete.")
+
+        # analyze whole spines
+        logger.info("\n     Performing additional mesh measurements on spines in batches on GPU...")
+
+        # combine connected_necks and Spines_filtered
+        # print max id for spines fileterd and connected_necks
+        if settings.additional_logging:
+            logger.info(f"      Max ID for spines filtered is {np.max(spines_filtered)}")
+            logger.info(f"      Max ID for connected necks is {np.max(connected_necks)}")
+
+        if settings.mesh_analysis == True:
+            spine_mesh_results = analyze_spines_batch(((connected_necks * ~(spines_filtered > 0)) + spines_filtered),
+                                                      spines_filtered, labeled_dendrites, neuron, locations, settings,
+                                                      logger,
+                                                      [settings.input_resZ, settings.input_resXY, settings.input_resXY])
+        # spine_mesh_results.to_csv(locations.tables + 'Detected_spines_mesh_measurements_' + filename + '.csv', index=False)
+
+        # analyze spine necks
+        # logger.info("      Analyzing spine necks...")
+        # neck_results = analyze_spine_necks_batch(connected_necks, logger, [settings.input_resZ,  settings.input_resXY,  settings.input_resXY])
+        # neck_results.to_csv(locations.tables + 'Detected_necks_mesh_measurements_' + filename + '.csv', index=False)
+
+        if len(spine_table) == 0:
+            logger.info(f"  *No spines were analyzed for this image")
+
+        else:
+            if settings.save_val_data == True:
+                logger.info("    Saving validation MIP image...")
+                io.create_mip_and_save_multichannel_tiff(
+                    [neuron, spines, spines_filtered, connected_necks, labeled_dendrites, skeleton, dendrite_distance,
+                     geodesic_distance_image], locations.MIPs + "MIP_" + filename+".tif", 'float', settings)
+
+            if settings.save_intermediate_data == True:
+                logger.info("    Saving validation volume image...")
+                io.create_and_save_multichannel_tiff(
+                    [neuron, spines, spines_filtered, connected_necks, labeled_dendrites, skeleton, dendrite_distance,
+                     geodesic_distance_image], locations.Vols + filename+".tif", 'float', settings)
+
+            del neuron, spines, labeled_dendrites, skeleton
+            gc.collect()
+            # logger.info("\n   Creating spine arrays on GPU...")
+            # Extract MIPs for each spine
+
+            # spine_MIPs, spine_slices, spine_vols = create_spine_arrays_in_blocks(image, labels_vol, spines_filtered, spine_table, settings.roi_volume_size, settings, locations, filename,  logger, settings.GPU_block_size)
+
+            ##### We now have refined labels for all spines - so we should remeasure intensities and any voxel measurements
+
+            # perform final vox based measurements on spines for morophology and intensity
+            logger.info("\n    Calculating final measurements...")
+            logger.info("     Calculating additional spine head measurements...")
+            spine_head_table, spines_filtered = spine_vox_measurements(image, spines_filtered, 1, 0,
+                                                                       settings.neuron_channel, 'head',
+                                                                       dendrite_distance, soma_distance,
+                                                                       settings.neuron_spine_size,
+                                                                       settings.neuron_spine_dist,
+                                                                       settings, locations, filename, logger)
+            logger.info("     Calculating additional whole spine measurements...")
+            spine_whole_table, spines_filtered = spine_vox_measurements(image, spines_filtered + connected_necks, 1, 0,
+                                                                        settings.neuron_channel, 'spine',
+                                                                        dendrite_distance, soma_distance,
+                                                                        settings.neuron_spine_size,
+                                                                        settings.neuron_spine_dist,
+                                                                        settings, locations, filename, logger)
+
+            logger.info("     Calculating additional neck measurements...")
+            # now measure in necks (what about if neck label doesn't exist (ensure has value 0)
+            neck_table, spines_filtered = spine_vox_measurements(image, connected_necks, 1, 0,
+                                                                 settings.neuron_channel, 'neck',
+                                                                 dendrite_distance, soma_distance,
+                                                                 settings.neuron_spine_size,
+                                                                 settings.neuron_spine_dist,
+                                                                 settings, locations, filename, logger)
+
+            # merge
+            del connected_necks, dendrite_distance, soma_distance, spines_filtered
+            gc.collect()
+
+            # multiply geodesic_distance by settings.input_resXY to get in microns
+            spine_dendID_and_geodist['geodesic_dist_to_soma'] = spine_dendID_and_geodist['geodesic_dist_to_soma']  * settings.input_resXY
+
+
+            spine_table = tables.merge_spine_measurements(spine_table, spine_dendID_and_geodist, settings, logger)
+
+            spine_table = tables.merge_spine_measurements(spine_table, spine_head_table, settings, logger)
+            spine_table = tables.merge_spine_measurements(spine_table, spine_whole_table, settings, logger)
+            spine_table = tables.merge_spine_measurements(spine_table, neck_table, settings, logger)
+
+
+            if settings.mesh_analysis == True:
+                # drop 'start_coords' from spine_mesh_results
+                spine_mesh_results.drop(['start_coords'], axis=1, inplace=True)
+
+                if settings.additional_logging:
+                    pd.set_option('display.max_columns', None)
+                    logger.info(spine_table.columns)
+                    logger.info(spine_mesh_results.columns)
+                    logger.info(spine_table.head())
+                    logger.info(spine_mesh_results.head())
+
+                # save these dfs as csvs
+                # spine_table.to_csv(locations.tables + 'Detected_spines_vox_measurements_' + filename + '.csv', index=False)
+                # spine_mesh_results.to_csv(locations.tables + 'Detected_spines_mesh_measurements_' + filename + '.csv', index=False)
+
+                spine_table = tables.merge_spine_measurements(spine_table, spine_mesh_results, settings, logger)
+
+            logger.info("     Calculating final complete spine measurements...")
+
+            if spine_head_table.empty:
+                logger.info('   Note some spine head meshes couldn\'t be generated, reverting those to voxel based')
+
+            #Coorection if meshes are not generated
+            missing_cols = [
+                # head metrics
+                'head_vol', 'head_area', 'head_surf_area', 'head_length', 'head_width_mean',
+                # spine metrics
+                'spine_vol', 'spine_area', 'spine_surf_area', 'spine_length',
+                # neck metrics
+                'neck_vol', 'neck_area', 'neck_surf_area', 'neck_length',
+                'neck_width_mean', 'neck_width_min', 'neck_width_max'
+            ]
+
+            voxel_vol = settings.input_resXY ** 2 * settings.input_resZ
+            for col in missing_cols:
+                if col not in spine_table.columns:
+                    if col.endswith('_vol') and f'{col}_vox' in spine_table.columns:
+                        spine_table[col] = spine_table.pop(f'{col}_vox') * voxel_vol
+                    else:
+                        spine_table[col] = np.nan
+
+
+
+
+            #spine_table['spine_type'] = spine_table.apply(
+            #    lambda row: categorize_spine(
+            #        row['spine_length'],
+            #        row['head_width_mean'],
+            #        row['neck_width_mean']
+            #    ),
+            #    axis=1
+            #)
+
+            #drop all vol_vox cols here
+            #vol_vox_cols = [c for c in spine_table.columns if c.endswith('_vol_vox')]
+            #if vol_vox_cols:
+            #    spine_table.drop(columns=vol_vox_cols, inplace=True)
+            #logger.info("    Spine measurements completed successfully.")
+
+
+            # update label column to id
+            spine_table.rename(columns={'label': 'spine_id'}, inplace=True)
+
+            # drop some metrics that need furth optimization width measuremnts
+            drop_columns = ['head_width_mean', 'neck_width_mean', 'neck_width_min', 'neck_width_max']
+            spine_table.drop(columns=drop_columns, inplace=True, errors='ignore')
+
+            # calcuate integrated density
+            for prefix in ("head", "neck", "spine"):
+                vol_col = f"{prefix}_vol"  # eg. head_vol
+                if vol_col not in spine_table.columns:
+                    continue  # nothing to do for this prefix
+
+                # loop over every mean-intensity column for this prefix
+                for col in spine_table.columns:
+                    if col.startswith(f"{prefix}_C") and col.endswith("_mean_int"):
+                        id_col = col.replace("_mean_int", "_int_density")
+                        if id_col not in spine_table.columns:  # avoid overwriting
+                            spine_table[id_col] = spine_table[vol_col] * spine_table[col]
+
+            #reorder for readability
+            spine_table = tables.reorder_spine_table_columns(spine_table)
+
+
+
+            spine_table.to_csv(locations.tables + filename + '_detected_spines.csv', index=False)
+
+            tables.create_spine_summary_dendrite(spine_table, filename, dendrite_lengths, dendrite_volumes, settings,
+                                          locations)
+
+            # create summary
+            summary = tables.create_spine_summary_neuron(spine_table, filename, neuron_length, neuron_volume, settings)
+
+            # Append to the overall summary DataFrame
+            spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
+    else:
+        logger.info("  *No dendrites were analyzed for this image.")
+    logger.info("     Complete.\n")
+    total_time = (time.time() - time_initial) / 60
+    logger.info(f" Processing complete for file {filename}. Total spine analysis time: {round(total_time, 2)} minutes.\n---")
+    flush_ram_and_gpu_memory(settings, logger)
+
+    return spine_summary
+
+
+
+@mp.profile_mem()
+def spine_detection(spines, erode, remove_borders, logger):
+    # with warnings.catch_warnings():
+    #    warnings.simplefilter("ignore")
+    #    spines_clean = morphology.remove_small_holes(spines, holes)
+
+    if erode[0] > 0:
+        # Erode
+        # element = morphology.ball(erode)
+        ellipsoidal_element = create_ellipsoidal_element(erode[0], erode[1], erode[2])
+
+        spines_eroded = ndimage.binary_erosion(spines, ellipsoidal_element)
+
+        # Distance Transform to mark centers
+        distance = ndimage.distance_transform_edt(spines_eroded)
+        seeds = ndimage.label(distance > 0.1 * distance.max())[0]
+
+        # Watershed
+        labels = segmentation.watershed(-distance, seeds, mask=spines)
+
+    else:
+        labels = measure.label(spines)
+
+    # Remove objects touching border
+    if remove_borders == True:
+        padded = np.pad(
+            labels,
+            ((1, 1), (0, 0), (0, 0)),
+            mode='constant',
+            constant_values=0,
+        )
+        labels = segmentation.clear_border(padded)[1:-1]
+
+    # add new axis for labels
+    # labels = labels[:, np.newaxis, :, :]
+
+    return labels
+
+
+
+@mp.profile_mem()
+def spine_detection_cores_and_membranes(cores, membranes, remove_borders, logger, settings):
+    """
+    Perform spine detection using cores and membranes.
+
+    Parameters:
+    -----------
+    cores : ndarray
+        Binary mask of spine cores/centers
+    membranes : ndarray
+        Binary mask of spine membranes/boundaries
+    erode : tuple or None
+        Erosion parameters (not used when cores are directly provided)
+    remove_borders : bool
+        Whether to remove objects touching image borders
+    logger : object or None
+        Logger object for debug information
+
+    Returns:
+    --------
+    labels : ndarray
+        Labeled segmentation of spines
+    """
+
+    # Calculate distance transform from cores
+
+    # save the distance file
+    # Label the cores as markers for watershed
+    labeled_cores = measure.label(cores)
+    # logger.info(f"    Spine cores detected: {len(np.unique(labeled_cores))}")
+
+    distance = ndimage.distance_transform_edt(~membranes)
+    labeled_spines = segmentation.watershed(-distance, markers=labeled_cores, mask=cores | membranes)
+
+    logger.info(f"    Voxels unassigned to spines: {np.sum(membranes & ~(labeled_spines > 0))}.")
+
+    # logger.info(f"    Spines detected: {np.unique(labeled_spines)}")
+
+    # Remove objects touching border if requested
+    if remove_borders == True:
+        padded = np.pad(
+            labeled_spines,
+            ((1, 1), (0, 0), (0, 0)),
+            mode='constant',
+            constant_values=0,
+        )
+        labeled_spines = segmentation.clear_border(padded)[1:-1]
+
+    return labeled_spines
+
+@mp.profile_mem()
+def spine_detection_4d(spines, erode, remove_borders, logger):
+    # with warnings.catch_warnings():
+    #    warnings.simplefilter("ignore")
+    #    spines_clean = morphology.remove_small_holes(spines, holes)
+    if erode[0] > 0:
+
+        # Erode
+        # element = morphology.ball(erode)
+        ellipsoidal_element = create_ellipsoidal_element(erode[0], erode[1], erode[2])
+        ellipsoidal_element = ellipsoidal_element[np.newaxis, :, :, :]
+
+        spines_eroded = ndimage.binary_erosion(spines, ellipsoidal_element)
+
+        # Distance Transform to mark centers
+        distance = ndimage.distance_transform_edt(spines_eroded)
+        seeds = ndimage.label(distance > 0.1 * distance.max())[0]
+
+        # Watershed
+        labels = segmentation.watershed(-distance, seeds, mask=spines)
+
+    else:
+        labels = measure.label(spines)
+
+    if remove_borders == True:
+        spines_list = []
+        # Remove objects touching border
+        for t in range(labels.shape[0]):
+            labels_3d = labels[t, :, :, :]
+            padded = np.pad(
+                labels_3d,
+                ((1, 1), (0, 0), (0, 0)),
+                mode='constant',
+                constant_values=0,
+            )
+            labels_3d = segmentation.clear_border(padded)[1:-1]
+            spines_list.append(labels_3d)
+
+        labels = np.stack(spines_list, axis=0)
+    # Check if the sequence of labels is continuous
+    unique_labels = np.unique(labels)
+    if np.all(np.diff(unique_labels) == 1) != True:
+        labels = measure.label(labels > 0, background=0)
+
+    return labels
+
+@mp.profile_mem()
+def calculate_dendrite_length_and_volume_fast(labeled_dendrites, skeleton, logger):
+    skeletonize_time = time.time()
+    skeleton_coords = np.array(np.nonzero(skeleton)).T
+    coords_time = time.time()
+    print(f"Coordinate extraction done in {coords_time - skeletonize_time:.2f} seconds")
+    # Retrieve labels at skeleton points from the original image
+    print("Retrieving labels from skeleton points...")
+    labeled_skeletons = labeled_dendrites[tuple(skeleton_coords.T)]
+    labels_time = time.time()
+    print(f"Label retrieval done in {labels_time - coords_time:.2f} seconds")
+
+    multi_time = time.time()
+    print("multiplication approach")
+    # Calculate labeled skeletons
+    #labeled_skeletons2 = skeleton * labeled_dendrites
+    print(f"Multiplication done in {time.time() - multi_time:.2f} seconds")
+
+    # Get unique labels, excluding background (0)
+    unique_dendrite_labels = np.unique(labeled_skeletons)
+    unique_dendrite_labels = unique_dendrite_labels[unique_dendrite_labels != 0]
+
+    dendrite_lengths = {label: 0 for label in unique_dendrite_labels}
+    # Find unique labels present in the skeleton
+    unique_labels_in_skeleton = np.unique(labeled_skeletons)
+    unique_labels_in_skeleton = unique_labels_in_skeleton[unique_labels_in_skeleton != 0]
+    #logger.info(f"Found {len(unique_labels_in_skeleton)} unique dendrite labels in skeleton.")
+
+    # Calculate lengths only for labels present in the skeleton
+    lengths = ndimage.sum(np.ones_like(labeled_skeletons), labeled_skeletons, index=unique_labels_in_skeleton)
+
+    # Update the dendrite_lengths dictionary with calculated lengths
+    for label, length in zip(unique_labels_in_skeleton, lengths):
+        dendrite_lengths[label] = length
+
+    # Calculate dendrite lengths
+    #dendrite_lengths = ndimage.sum(np.ones_like(labeled_skeletons), labeled_skeletons, index=unique_dendrite_labels)
+    #dendrite_lengths = {label: 0 for label in unique_dendrite_labels}
+
+    # Calculate dendrite volumes
+    # Step 6: Calculate dendrite volumes for all labels
+   # dendrite_volumes = ndimage.sum(labeled_dendrites > 0, labeled_dendrites, index=unique_dendrite_labels)
+    dendrite_volumes = ndimage.sum(np.ones_like(labeled_dendrites), labeled_dendrites, index=unique_dendrite_labels)
+    dendrite_volumes = dict(zip(unique_dendrite_labels, dendrite_volumes))
+
+    #dendrite_volumes = ndimage.sum(np.ones_like(labeled_dendrites), labeled_dendrites, index=unique_dendrite_labels)
+
+    # Create dictionaries with labels as keys
+    #dendrite_lengths = dict(zip(unique_dendrite_labels, dendrite_lengths))
+    #dendrite_volumes = dict(zip(unique_dendrite_labels, dendrite_volumes))
+
+    return dendrite_lengths, dendrite_volumes, skeleton_coords, labeled_skeletons
+
+@mp.profile_mem()
+def initial_spine_measurements(image, labels, dendrite, max_label, neuron_ch, dendrite_distance, sizes, dist,
+                         settings, locations, filename, logger):
+    """ measures intensity of each channel, as well as distance to dendrite
+    """
+
+    if len(image.shape) == 3:
+        image = np.expand_dims(image, axis=1)
+
+    # Measure channel 1:
+    logger.info("    Making initial morphology and intensity measurements for channel 1...")
+    # logger.info(f" {labels.shape}, {image.shape}")
+    main_table = pd.DataFrame(
+        measure.regionprops_table(
+            labels,
+            intensity_image=image[:, 0, :, :],
+            properties=['label', 'centroid', 'area'],  # area is volume for 3D images
+        )
+    )
+    main_table.rename(columns={'centroid-0': 'z'}, inplace=True)
+    main_table.rename(columns={'centroid-1': 'y'}, inplace=True)
+    main_table.rename(columns={'centroid-2': 'x'}, inplace=True)
+    # measure distance to dendrite
+    logger.info("    Measuring distances to dendrite/s...")
+    # logger.info(f" {labels.shape}, {dendrite_distance.shape}")
+    distance_table = pd.DataFrame(
+        measure.regionprops_table(
+            labels,
+            intensity_image=dendrite_distance,
+            properties=['label', 'min_intensity', 'max_intensity'],  # area is volume for 3D images
+        )
+    )
+
+    # rename distance column
+    distance_table.rename(columns={'min_intensity': 'dist_to_dendrite'}, inplace=True)
+    distance_table.rename(columns={'max_intensity': 'spine_length'}, inplace=True)
+
+    distance_col = distance_table["dist_to_dendrite"]
+    main_table = main_table.join(distance_col)
+    distance_col = distance_table["spine_length"]
+    main_table = main_table.join(distance_col)
+
+    # filter out small objects
+    volume_min = sizes[0]  # 3
+    volume_max = sizes[1]  # 1500?
+
+    # logger.info(f" Filtering spines between size {volume_min} and {volume_max} voxels...")
+
+    # filter based on volume
+    # logger.info(f"  filtered table before area = {len(main_table)}")
+    spinebefore = len(main_table)
+
+    filtered_table = main_table[(main_table['area'] > volume_min) & (main_table['area'] < volume_max)]
+
+    logger.info(f"     Total putative spines: {spinebefore}")
+    logger.info(f"     Spines after volume filtering = {len(filtered_table)} ")
+    # logger.info(f"  filtered table after area = {len(filtered_table)}")
+
+    # filter based on distance to dendrite
+    spinebefore = len(filtered_table)
+    # logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
+    # logger.info(f"  filtered table before dist = {len(filtered_table)}. and distance = {dist}")
+    filtered_table = filtered_table[(filtered_table['dist_to_dendrite'] < dist)]
+    logger.info(f"     Spines after distance filtering = {len(filtered_table)} ")
+
+    if settings.Track != True:
+        # update label numbers based on offset
+        filtered_table['label'] += max_label
+        labels[labels > 0] += max_label
+        labels = create_filtered_labels_image(labels, filtered_table, logger)
+    else:
+
+        # Clean up label image to remove objects from image.
+        ids_to_keep = set(filtered_table['label'])  # Extract IDs to keep from your filtered DataFrame
+        # Create a mask
+        mask_to_keep = np.isin(labels, list(ids_to_keep))
+        # Apply the mask: set pixels not in `ids_to_keep` to 0
+        labels = np.where(mask_to_keep, labels, 0)
+
+    # update to included dendrite_id
+    filtered_table.insert(4, 'dendrite_id', dendrite)
+
+    # create vol um measurement
+    filtered_table.insert(6, 'spine_vol',
+                          filtered_table['area'] * (settings.input_resXY * settings.input_resXY * settings.input_resZ))
+    # drop filtered_table['area']
+    filtered_table = filtered_table.drop(['area'], axis=1)
+    # filtered_table.rename(columns={'area': 'spine_vol'}, inplace=True)
+
+    # create dist um cols
+
+    filtered_table = tables.move_column(filtered_table, 'spine_length', 7)
+    # replace multiply column spine_length by settings.input_resXY
+    filtered_table['spine_length'] *= settings.input_resXY
+    # filtered_table.insert(8, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY))
+    filtered_table = tables.move_column(filtered_table, 'dist_to_dendrite', 9)
+    filtered_table['dist_to_dendrite'] *= settings.input_resXY
+    # filtered_table.insert(10, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY))
+    #filtered_table = tables.move_column(filtered_table, 'dist_to_soma', 11)
+    #filtered_table['dist_to_soma'] *= settings.input_resXY
+    # filtered_table.insert(12, 'dist_to_soma_um', filtered_table['dist_to_soma'] * (settings.input_resXY))
+
+    # logger.info(f"  filtered table before image filter = {len(filtered_table)}. ")
+    # logger.info(f"  image labels before filter = {np.max(labels)}.")
+    # integrated_density
+    #filtered_table['C1_int_density'] = filtered_table['spine_vol'] * filtered_table['C1_mean_int']
+
+    # measure remaining channels
+    #for ch in range(image.shape[1] - 1):
+    #    filtered_table['C' + str(ch + 2) + '_int_density'] = filtered_table['spine_vol'] * filtered_table[
+    #        'C' + str(ch + 2) + '_mean_int']
+
+    # Drop unwanted columns
+    # filtered_table = filtered_table.drop(['spine_vol','spine_length', 'dist_to_dendrite', 'dist_to_soma'], axis=1)
+    #logger.info(
+    #    f"     After filtering {len(filtered_table)} spines were analyzed from a total of {len(main_table)} putative spines")
+    #create a subset of filtered table using columns label, x, y, z
+    filtered_table_subset = filtered_table[['label', 'x', 'y', 'z']]
+
+    return filtered_table_subset, labels
+
+@mp.profile_mem()
 def associate_spines_with_necks_gpu(spines, necks, logger):
     # Convert to CuPy arrays
     labeled_array_cp = cp.array(spines)
@@ -838,142 +1042,7 @@ def associate_spines_with_necks_gpu(spines, necks, logger):
     # Return the final labeled array after fully growing
     return labeled_array_cp.get()
 
-
-def get_bounding_box_cupy(mask, margin, shape, settings):
-    """Get the bounding box of a binary mask with added margin."""
-    margin_y = margin_x = int(margin / settings.input_resXY)
-    margin_z = int(margin / settings.input_resZ)
-    z, y, x = cp.where(mask)
-
-    z_min, z_max = int(max(z.min().item() - margin_z, 0)), int(min(z.max().item() + margin_z + 1, shape[0]))
-    y_min, y_max = int(max(y.min().item() - margin_y, 0)), int(min(y.max().item() + margin_y + 1, shape[1]))
-    x_min, x_max = int(max(x.min().item() - margin_x, 0)), int(min(x.max().item() + margin_x + 1, shape[2]))
-
-    return z_min, z_max, y_min, y_max, x_min, x_max
-
-
-def pathfinding_v3b(object_subvolume_gpu, target_subvolume_gpu, intensity_image_gpu, logger):
-    """
-    Pathfinding that combines distance map and intensity image to prioritize brighter voxels,
-    with optimized start and end point selection.
-    """
-    # Compute the distance map from the target subvolume
-    distance_map_gpu = cp_ndimage.distance_transform_edt(1 - target_subvolume_gpu)
-
-    # Normalize the intensity image to match the scale of the distance map
-    intensity_image_gpu = cp.asarray(intensity_image_gpu)
-    # Create a mask for the object (1 where there's no object, 0 where there is)
-    object_mask_gpu = 1 - object_subvolume_gpu
-
-    # Apply the object mask to the intensity image
-    intensity_image_gpu = intensity_image_gpu * object_mask_gpu
-
-    normalized_intensity_gpu = intensity_image_gpu / cp.max(intensity_image_gpu)
-
-    # Apply gamma correction to increase the influence of brighter voxels
-    gamma = 0.4  # Adjust this value to fine-tune the brightness influence
-    gamma_corrected_intensity = cp.power(normalized_intensity_gpu, gamma)
-
-    # Create blurred intensity image
-    blurred_intensity_gpu = cp_ndimage.gaussian_filter(gamma_corrected_intensity, sigma=[0.25, 10, 10])
-
-    # Normalize the distance map to [0, 1]
-    max_distance = cp.max(distance_map_gpu)
-    normalized_distance_map_gpu = distance_map_gpu / (max_distance + 1e-6)
-
-    # Invert the intensity so that brighter voxels have lower values (to minimize)
-    intensity_weight = 0.2  # Adjust this weight to balance distance and intensity
-    blurred_intensity_weight = 0.3
-    epsilon = 1e-6
-    augmented_map_gpu = normalized_distance_map_gpu / (
-            intensity_weight * gamma_corrected_intensity +
-            blurred_intensity_weight * blurred_intensity_gpu +
-            epsilon
-    )
-
-    #augmented_map_gpu = (distance_map_gpu
-    #                     - intensity_weight * gamma_corrected_intensity
-    #                     - blurred_intensity_weight * blurred_intensity_gpu)
-
-
-
-    # Apply Gaussian smoothing to reduce noise and create a smoother path
-    sigma = [0.5, 0.5, 0.5]  # Adjust these values for each dimension
-    augmented_map_gpu = cp_ndimage.gaussian_filter(augmented_map_gpu, sigma)
-
-    # Convert augmented map, object, and target to NumPy for processing
-    augmented_map = augmented_map_gpu.get()
-    object_volume = object_subvolume_gpu.get()
-    target_volume = target_subvolume_gpu.get()
-
-    # Find potential start points (near the object)
-    dilated_object = ndimage.binary_dilation(object_volume, iterations=1)
-    start_candidates = np.argwhere(dilated_object & ~object_volume)
-
-    # Find potential end points (on the target)
-
-    modified_target = np.logical_xor(( ndimage.binary_dilation(target_volume, iterations=1)), target_volume)
-    end_candidates = np.argwhere(modified_target)
-
-    # Find the best start and end points
-    best_start = min(start_candidates, key=lambda p: augmented_map[tuple(p)])
-    best_end = min(end_candidates, key=lambda p: augmented_map[tuple(p)])
-
-    # Initialize the path
-    path = []
-    current_point = tuple(best_start)
-    path.append(current_point)
-
-    max_iterations = 200  # Increased to allow for longer paths
-    reached_target = False
-    for _ in range(max_iterations):
-        z, y, x = current_point
-
-        # Get possible moves
-        neighbors = [
-            (int(z + dz), int(y + dy), int(x + dx))
-            for dz in [-1, 0, 1] for dy in [-1, 0, 1] for dx in [-1, 0, 1]
-            if (0 <= z + dz < augmented_map.shape[0] and
-                0 <= y + dy < augmented_map.shape[1] and
-                0 <= x + dx < augmented_map.shape[2] and
-                not target_volume[z + dz, y + dy, x + dx])
-        ]
-
-        # Sort neighbors by the augmented map value
-        neighbors.sort(key=lambda p: augmented_map[p])
-
-        # Find the best move
-        best_move = neighbors[0] if neighbors else None
-
-        if best_move is None:
-            # No valid moves available, terminate the path
-            break
-
-        z_only_move = (int(z + np.sign(best_move[0] - z)), y, x)
-
-        # If moving only in Z is better or the same, prefer that
-        if augmented_map[z_only_move] <= augmented_map[best_move] and not target_volume[z_only_move]:
-            next_point = z_only_move
-        else:
-            next_point = best_move
-
-
-            # Stop if the next point is at the modified target
-        if modified_target[next_point]:
-            path.append(next_point)
-            reached_target = True
-            break
-
-        # Update current point and path
-        current_point = next_point
-        path.append(current_point)
-
-    if reached_target:
-        return path, augmented_map_gpu.get()
-    else:
-        #logger.warning("Path finding failed: did not reach the target.")
-        return None, augmented_map_gpu.get()
-
+@mp.profile_mem()
 def extend_objects_GPU(objects, target_objects, intensity, settings, locations, logger):
     logger.info("     Finding spine necks using GPU...")
 
@@ -1120,43 +1189,989 @@ def extend_single_object_GPU_v2(label_value, object_subvolume, target_subvolume,
 
     return label_value, path_volume, distance_map
 
-def pad_subvolume_gpu(subvolume_gpu, pad_width):
-    subvolume_gpu = cp.asarray(subvolume_gpu)
-    return cp.pad(subvolume_gpu, ((pad_width, pad_width), (pad_width, pad_width), (pad_width, pad_width)),
-                  mode='constant', constant_values=0)
+@mp.profile_mem()
+def analyze_spines_batch(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings, logger, scaling):
+    #dendrites and labels and must be binarized for further analysis
 
-def unpad_subvolume_gpu(subvolume_gpu, pad_width):
-    return subvolume_gpu[pad_width:-pad_width, pad_width:-pad_width, pad_width:-pad_width]
+    start_time = time.time()
+    #free_mem, total_mem = cp.cuda.runtime.memGetInfo()
+    #logger.info(f"       Available GPU memory: {free_mem / 1e9:.2f} GB")
+    mem_required, free_mem, total_mem = check_gpu_memory_requirements(spine_labels_vol, logger)
+    # estimate requirements
 
-def spine_neck_analysis_gpu_batch(subvolumes, logger, scaling):
+    if mem_required > 0.25 * total_mem:
+        logger.info("       Volume exceeds 25% of GPU memory. Implementing tiling strategy.")
 
-    cp_subvolumes = [cp.asarray(sv) for sv in subvolumes]
+        return analyze_spines_batch_tiled(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings,
+                                          logger, scaling)
+
+    # Move data to GPU and create multi-channel array
+    cp_multi_channel = cp.stack([cp.asarray(spine_labels_vol),
+                                cp.asarray(head_labels_vol),
+                                cp.asarray(dendrite),
+                                cp.asarray(neuron)], axis=-1)
+    logger.info(f"       Multi-channel GPU array created.")
+    # Get unique labels from array A (excluding background)
+    labels = cp.unique(cp_multi_channel[:, :, :, 0])
+    labels = labels[labels != 0]
+
+    avg_sub_volume_shape = 6 / scaling[0], 6 / scaling[1], 6 / scaling[2]  # spine or neck
+    dtype_size = 2  # 4 bytes per float32
+    batch_size = calculate_batch_size(mem_required, spine_labels_vol, avg_sub_volume_shape, dtype_size)
+    # print(f"Using batch size: {batch_size}")
+    logger.info(f"       Using batch size of {batch_size} spines...")
 
     results = []
 
-    for cp_subvolume in cp_subvolumes:
+    #batch
+    total_batches = (len(labels) + batch_size - 1) // batch_size  # Calculate total number of batches (ceiling division)
+    milestones = [int(total_batches * p / 100) for p in range(10, 101, 10)]  # Create milestones at 10% intervals
 
-        # Extract surface using marching cubes
-        verts, faces, _, _ = marching_cubes(cp.asnumpy(cp_subvolume))
+    for i in range(0, len(labels), batch_size):
+        batch_labels = labels[i:i + batch_size]
+        current_batch = i // batch_size + 1
 
-        # Convert vertices and faces to CuPy arrays
-        verts = cp.asarray(verts) * cp.asarray(scaling)
-        faces = cp.asarray(faces)
+        # Print at 10% intervals (10%, 20%, 30%, etc.)
+        if current_batch in milestones:
+            percentage = (current_batch / total_batches) * 100
+            logger.info(f"        Processing batch {current_batch} of {total_batches}... ({int(percentage)}% complete)")
 
-        # Compute volume using triangles
-        volume = mesh_volume(verts, faces)
 
-        # compute length and then widths
-        length, min_width, max_width, mean_width, skeleton_result = mesh_neck_width_and_length(cp_subvolume, verts, logger, scaling)
-        # Compute length using the longest path
-        #length = mesh_length(verts, faces)
+        # Extract subvolumes
+        sub_volumes, start_coords = extract_subvolumes_mulitchannel_GPU_batch(cp_multi_channel, batch_labels)
 
-        # Compute width statistics
-        #min_width, max_width, mean_width = mesh_neck_width(verts, faces)
-        results.append((volume, length, min_width, max_width, mean_width))
+        #logger shape
+        #if settings.additional_logging == True:
+            #logger.info(f"Subvolumes shape: {len(sub_volumes)}")
+            #log dimensions of subvolumes0
+            #logger.info(f"Subvolume 0 shape: {sub_volumes[0].shape}")
 
-    return results #volume, length, min_width, max_width, mean_width
+        #mask subvolumes
+        #logger.info(f"      Masking subvolumes...")
+        sub_volumes = batch_mask_subvolumes_cp(sub_volumes, batch_labels)
 
+        #if settings.additional_logging == True:
+        #    logger.info(f"Subvolume 0 shape after masking: {sub_volumes[0].shape}")
+
+
+        # Pad subvolumes to allow batching
+        #padded_subvolumes, pad_amounts = pad_subvolumes(sub_volumes, logger)
+
+        padded_subvolumes, pad_amounts = pad_and_center_subvolumes(sub_volumes, settings, logger)
+
+        #Save spine arrays - shape is M
+        if settings.additional_logging == True:
+            logger.info(f"      Saving spine arrays...")
+        #MZYXC to MZCYX for imagej
+        export_subvols = cp.transpose(cp.stack(padded_subvolumes, axis=0), (0, 1, 4, 2,3 ))
+        export_subvols[:,:, :3] = export_subvols[:, :, :3] * 65535 / 2
+        export_subvols[:, :, 0] = export_subvols[:, :, 0] - export_subvols[:, :, 1]
+        export_subvols = cp.asnumpy(export_subvols)
+        #logger.info(export_subvols.shape)
+
+        imwrite(f'{locations.arrays}/Spine_vols_{settings.filename}_b{i // batch_size + 1}.tif', export_subvols.astype(np.uint16), compression=('zlib', 1), imagej=True,
+                photometric='minisblack',
+                metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'TZCYX', 'mode': 'composite'},
+                resolution=(1 / settings.input_resXY, 1 / settings.input_resXY))
+
+        imwrite(f'{locations.arrays}/Spine_MIPs_{settings.filename}_b{i // batch_size + 1}.tif', np.max(export_subvols, axis=1).astype(np.uint16), compression=('zlib', 1), imagej=True,
+                photometric='minisblack',
+                metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX', 'mode': 'composite'},
+                resolution=(1 / settings.input_resXY, 1 / settings.input_resXY))
+
+        #imwrite(f'{locations.arrays}/Spine_slices_{settings.filename}_b{i // batch_size + 1}.tif',
+        #        export_subvols[:,export_subvols.shape[1] // 2].astype(np.uint16), imagej=True,
+        #        photometric='minisblack',
+        #        metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX', 'mode': 'composite'},
+        #        resolution=(1 / settings.input_resXY, 1 / settings.input_resXY))
+
+        del export_subvols
+
+        if settings.additional_logging == True:
+            logger.info(f"Subvolume 0 shape after padding: {padded_subvolumes[0].shape}")
+
+
+        #loop over sub_volumes but also provide a counter
+        #if settings.save_intermediate_data == True:
+        #    for subvol, start_coord, label in zip(sub_volumes, start_coords, batch_labels):
+
+                #save as tif and resahpe for imageJ
+        #        imwrite_filename = os.path.join(locations.Meshes, f"subvol_{label}.tif")
+                #imageJ ZCYX - currently ZYXC so fix
+
+                #subvol_out = subvol.get()
+        #        imwrite(imwrite_filename, subvol.get().transpose(0, 3, 1, 2).astype(np.uint16), imagej=True,
+        #                photometric='minisblack', metadata={'unit': 'um', 'axes': 'ZCYX'})
+
+
+        #generate data for spine
+        batch_data = cp.stack([subvol[:, :, :, 0].astype(cp.float32) for subvol in padded_subvolumes])  # spine volumes
+        batch_dendrite = cp.stack([subvol[:, :, :, 2] for subvol in padded_subvolumes]) #dendrite
+        #binary of batch_dendrite
+        batch_binary = cp.stack([subvol[:, :, :, 2] > 0 for subvol in padded_subvolumes])  # dendrite binary
+
+        # calculate closest points
+        closest_points = find_closest_points_batch(batch_data, batch_binary)
+
+        #updated to remove dendrite id calc as more efficient during geodesic dist analysis
+        #dendrite_ids = find_closest_dendrite_id(closest_points, batch_dendrite)
+        #print(dendrite_ids)
+        #if settings.additional_logging == True:
+        #    logger.info(f"     batch_data dtype: {batch_data.dtype}, shape: {batch_data.shape}")
+        #    logger.info(f"     batch_dendrite dtype: {batch_dendrite.dtype}, shape: {batch_dendrite.shape}")
+        #    logger.info(f"     closest_points dtype: {closest_points.dtype}, shape: {closest_points.shape}")
+           # logger.info(f"dendrite_ids dtype: {dendrite_ids.dtype}, shape: {dendrite_ids.shape}")
+
+        # Process spines and pass midlines on for neck and head analysis
+        t0 = time.time()
+
+        spine_results, midlines = batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, batch_labels, scaling, 0, True, None, True, True,"spine", locations, settings, logger)
+        if settings.additional_logging == True:
+            logger.info(f"      Time taken for mesh measurements of spines: {time.time() - t0:.2f} seconds")
+
+
+        # Subtract heads from spines and measure necks and ensure float for marching_cubes
+        batch_data = cp.stack([
+            cp.maximum(subvol[:, :, :, 0] - subvol[:, :, :, 1], 0).astype(cp.float32)
+            for subvol in padded_subvolumes
+        ])
+
+        #for subvol in sub_volumes:
+        #    subvol[:, :, :, 0] = cp.maximum(subvol[:, :, :, 0] - subvol[:, :, :, 1], 0)
+        t0 = time.time()
+
+        neck_results, _ = batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, batch_labels, scaling, 0, False, midlines, True, True, "neck", locations, settings,  logger) #True for min max mean width
+        if settings.additional_logging == True:
+            logger.info(f"      Time taken for mesh measurements of necks: {time.time() - t0:.2f} seconds")
+
+        #now process heads
+        t0 = time.time()
+        batch_data = cp.stack([subvol[:, :, :, 1] for subvol in padded_subvolumes])  # spine vols
+        # Process just heads - but don't need vol for length just surface area
+        head_results, _ = batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, batch_labels, scaling, 1, False, midlines, True, True,"head", locations, settings, logger) #False for width using bounding box
+        if settings.additional_logging == True:
+                logger.info(f"      Time taken for mesh measurements of spine heads: {time.time() - t0:.2f} seconds")
+        # Combine results for this batch
+
+        g = lambda d, k: d.get(k, np.nan)
+
+        for r_spine, r_neck, r_head in zip(spine_results, neck_results, head_results):
+
+            #convex hull ration
+            head_conv = g(r_head, 'head_convex_vol')
+            head_vol = g(r_head, 'head_volume')
+            hull_ratio = (
+                np.nan
+                if (np.isnan(head_conv) or np.isnan(head_vol) or head_vol == 0)
+                else (head_conv - head_vol) / head_vol
+            )
+
+
+            results.append({
+                'label': r_spine['ID'],
+                # 'dendrite_id': int(dend_id),
+                # -------------  spine -----------------
+                'start_coords': g(r_spine, 'start_coords'),
+                'spine_area': g(r_spine, 'spine_area'),
+                'spine_vol': g(r_spine, 'spine_volume'),
+                'spine_surf_area': g(r_spine, 'spine_surface_area'),
+                'spine_length': g(r_spine, 'spine_length'),
+                'spine_bbox_vol': g(r_spine, 'spine_bbox_vol'),
+                'spine_extent': g(r_spine, 'spine_extent'),
+                'spine_solidity': g(r_spine, 'spine_solidity'),
+                'spine_convex_vol': g(r_spine, 'spine_convex_vol'),
+                #'spine_axis_major': g(r_spine, 'spine_axis_major'),
+                #'spine_axis_minor': g(r_spine, 'spine_axis_minor'),
+
+                # -------------  head ------------------
+                'head_width_mean': g(r_head, 'head_mean_width'),
+                'head_area': g(r_head, 'head_area'),
+                'head_vol': head_vol,
+                'head_surf_area': g(r_head, 'head_surface_area'),
+                'head_length': g(r_head, 'head_length'),
+                'head_bbox_vol': g(r_head, 'head_bbox_vol'),
+                'head_extent': g(r_head, 'head_extent'),
+                'head_solidity': g(r_head, 'head_solidity'),
+                'head_convex_vol': head_conv,
+                #'head_axis_major': g(r_head, 'head_axis_major'),
+                #'head_axis_minor': g(r_head, 'head_axis_minor'),
+
+                'head_convex_hull_ratio': hull_ratio,
+
+                # -------------  neck ------------------
+                'neck_area': g(r_neck, 'neck_area'),
+                'neck_vol': g(r_neck, 'neck_volume'),
+                'neck_surf_area': g(r_neck, 'neck_surface_area'),
+                'neck_length': g(r_neck, 'neck_length'),
+                'neck_width_min': g(r_neck, 'neck_min_width'),
+                'neck_width_max': g(r_neck, 'neck_max_width'),
+                'neck_width_mean': g(r_neck, 'neck_mean_width'),
+                'neck_bbox_vol': g(r_neck, 'neck_bbox_vol'),
+                'neck_extent': g(r_neck, 'neck_extent'),
+                'neck_solidity': g(r_neck, 'neck_solidity'),
+                'neck_convex_vol': g(r_neck, 'neck_convex_vol'),
+                #'neck_axis_major': g(r_neck, 'neck_axis_major'),
+                #'neck_axis_minor': g(r_neck, 'neck_axis_minor'),
+
+                #'head_length_calc': r_spine['spine_length'] - r_neck['neck_length'],
+                #'head_vol_calc': r_spine['spine_volume'] - r_neck['neck_volume']
+            })
+    spine_results_df = pd.DataFrame(results)
+
+    logger.info(f"      Total time taken for mesh analysis: {time.time() - start_time:.2f} seconds")
+
+    return spine_results_df
+
+@mp.profile_mem()
+def calculate_dend_ID_and_geo_distance(labeled_dendrites, labeled_spines, skeleton_coords, skeleton_labels, filename,
+                                       locations,
+                                       soma_vol=None, settings=None):
+    try:
+
+        # track time of function
+        t0 = time.time()
+        print("Creating KDTree from skeletonized dendrites...")
+        sampling_method = 'systematic'
+        sampling_param = 4
+        dendrite_tree, skeleton_labels = create_kdtree_from_skeleton(
+            skeleton_coords, skeleton_labels, sampling_method=sampling_method, sampling_param=sampling_param)
+        t1 = time.time()
+        print(f"Time taken: {t1 - t0:.2f} s")
+
+        print("Matching and relabeling objects...")
+        t0 = time.time()
+
+        relabeled_spines, spine_labels_1D, spine_labels_dict, indices, distances, dend_IDs = match_and_relabel_objects_geo(
+            dendrite_tree, skeleton_labels, labeled_spines)
+        t1 = time.time()
+        print(f"Time taken: {t1 - t0:.2f} s")
+
+        mapping_dend_to_spine_data = defaultdict(list)
+        for i in range(len(spine_labels_1D)):
+            spine = spine_labels_1D[i]
+            dist = spine_labels_dict.get(spine, 0)
+            if dist != 0:
+                index_in_A = indices[i]
+                coord_in_A = dendrite_tree.data[index_in_A]
+                mapping_dend_to_spine_data[dist].append({
+                    'label_B': spine,
+                    'index_in_A': index_in_A,
+                    'coord_in_A': coord_in_A,
+                    'distance': distances[i],
+                })
+
+        # Initialize an array to accumulate geodesic distances
+        geodesic_distance_image = np.full(labeled_dendrites.shape, np.nan, dtype=np.float32)
+
+        print("geodesic distance")
+        t0 = time.time()
+        # Compute geodesic distances
+        geodesic_distances_B = {}
+        for dendrite, data_list in mapping_dend_to_spine_data.items():
+            # Get the mask of object label_A in image_A
+            dendrite_mask = (labeled_dendrites == dendrite)
+
+            # Determine starting points
+            if soma_vol is not None:
+                # Find the point(s) in object A closest to an object in image_C
+                object_coords = np.argwhere(dendrite_mask)
+                c_coords = np.argwhere(soma_vol)
+                if c_coords.size > 0:
+                    from scipy.spatial import cKDTree
+                    tree_C = cKDTree(c_coords)
+                    distances_to_C, indices_C = tree_C.query(object_coords)
+                    min_index = np.argmin(distances_to_C)
+                    starting_point = tuple(object_coords[min_index])
+                else:
+                    # Fallback to top-left voxel
+                    starting_point = tuple(object_coords[np.argmin(np.sum(object_coords, axis=1))])
+            else:
+                # Use the top-left voxel
+                object_coords = np.argwhere(dendrite_mask)
+                starting_point = tuple(object_coords[np.argmin(np.sum(object_coords, axis=1))])
+            t1 = time.time()
+            print(f"Time taken: {t1 - t0:.2f} s")
+
+            print(f"Computing geodesic distance map for dendrite {dendrite}...")
+            t0 = time.time()
+            # Compute geodesic distance map
+            distance_map = compute_geodesic_distance_map(dendrite_mask, [starting_point])
+            t1 = time.time()
+            print(f"Time taken: {t1 - t0:.2f} s")
+
+            print(f"Accumulating geodesic distances for dendrite {dendrite}...")
+            t0 = time.time()
+            # Accumulate the geodesic distances into the image
+            geodesic_distance_image[dendrite_mask] = distance_map[dendrite_mask]
+
+            # For each data in data_list
+            for data in data_list:
+                label_B = data['label_B']
+                coord_in_A = np.round(data['coord_in_A']).astype(int)
+                coord_in_A = tuple(coord_in_A)
+                geodesic_distance = distance_map[coord_in_A]
+                geodesic_distances_B[label_B] = geodesic_distance
+
+            t1 = time.time()
+            print(f"Time taken: {t1 - t0:.2f} s")
+
+        for label_B, distance in geodesic_distances_B.items():
+            dend_IDs.loc[dend_IDs['label'] == label_B, 'geodesic_dist_to_soma'] = distance
+
+        # print(f"Saving relabeled image to {output_path}...")
+        # save_labeled_tiff(relabeled_spines, output_path)
+
+        # Save the geodesic distance image
+        # geodesic_distance_image_path = os.path.splitext(output_path)[0] + '_geodesic_distances.tif'
+        # print(f"Saving geodesic distance image to {geodesic_distance_image_path}...")
+        # Replace NaNs with zeros or a large number for visualization
+        geodesic_distance_image = np.nan_to_num(geodesic_distance_image, nan=0).astype(np.float32)
+        # create mip of geodesic distance image
+
+        # geodesic_distance_image = geodesic_distance_image.astype(np.float32)
+        # Save the geodesic distance image
+        # if settings.save_intermediate_data == True:
+        #    geodesic_distance_image = np.max(geodesic_distance_image, axis=0)
+        #    imwrite(locations.MIPs+filename+'_geodesic_dist.tif', geodesic_distance_image, compression=('zlib', 1))
+
+        # geodesic_csv_path = os.path.splitext(output_path)[0] + '_geodesic_distances.csv'
+        # with open(geodesic_csv_path, 'w', newline='') as csvfile:
+        #   writer = csv.writer(csvfile)
+        #   writer.writerow(['Label_B', 'Geodesic_Distance'])
+        #   for label_B, distance in geodesic_distances_B.items():
+        #       writer.writerow([label_B, distance])
+
+        print(f"Original dendrite labels: {fast_unique_count(labeled_dendrites)}")
+        print(f"Original spine labels: {fast_unique_count(labeled_spines)}")
+        print(f"Labels after relabeling: {fast_unique_count(relabeled_spines)}")
+
+        # print(f"Original file size of B: {os.path.getsize(image_B_path) / (1024 * 1024):.2f} MB")
+        # print(f"New file size: {os.path.getsize(output_path) / (1024 * 1024):.2f} MB")
+
+        return dend_IDs, geodesic_distance_image
+
+    except Exception as e:
+        print(f"An error occurred: {repr(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+@mp.profile_mem()
+def analyze_spines_batch_tiled(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings, logger,
+                               scaling):
+    start_time = time.time()
+    results = []
+    shape = spine_labels_vol.shape
+    tile_size = calculate_tile_size(shape, settings, logger)
+    overlap = (10, 50, 50)  # Adjust based on your needs
+
+    # Calculate total number of tiles
+    total_tiles = math.ceil(shape[0] / (tile_size[0] - overlap[0])) * \
+                  math.ceil(shape[1] / (tile_size[1] - overlap[1])) * \
+                  math.ceil(shape[2] / (tile_size[2] - overlap[2]))
+
+    current_tile = 0
+
+    for z in range(0, shape[0], tile_size[0] - overlap[0]):
+        for y in range(0, shape[1], tile_size[1] - overlap[1]):
+            for x in range(0, shape[2], tile_size[2] - overlap[2]):
+                current_tile += 1
+                z_end = min(z + tile_size[0], shape[0])
+                y_end = min(y + tile_size[1], shape[1])
+                x_end = min(x + tile_size[2], shape[2])
+
+                tile_spine = spine_labels_vol[z:z_end, y:y_end, x:x_end]
+                tile_head = head_labels_vol[z:z_end, y:y_end, x:x_end]
+                tile_dendrite = dendrite[z:z_end, y:y_end, x:x_end]
+                tile_neuron = neuron[z:z_end, y:y_end, x:x_end]
+
+
+                logger.info(f"      Processing tile {current_tile} of {total_tiles}: z={z}:{z_end}, y={y}:{y_end}, x={x}:{x_end}")
+
+
+                # Process the tile
+                tile_results = process_spine_batch_tile(f'tile{z}_{y}_{x}', tile_spine, tile_head, tile_dendrite, tile_neuron, locations, settings,
+                                            logger, scaling)
+
+                # Adjust coordinates to global space
+                for result in tile_results:
+                    result['start_coords'] = [coord + offset for coord, offset in
+                                              zip(result['start_coords'], [z, y, x])]
+
+                results.extend(tile_results)
+                cp.get_default_memory_pool().free_all_blocks()
+                cp.get_default_pinned_memory_pool().free_all_blocks()
+
+    spine_results_df = pd.DataFrame(results)
+    spine_results_df = filter_duplicated_spine_results(spine_results_df)
+    logger.info(f"      Total time taken for tiled spine mesh analysis: {time.time() - start_time:.2f} seconds")
+    return spine_results_df
+
+@mp.profile_mem()
+def filter_duplicated_spine_results(df):
+    print("Diagnostic information:")
+    print(f"DataFrame shape: {df.shape}")
+    print(f"Column names: {df.columns.tolist()}")
+    print(f"Index name: {df.index.name}")
+    print(f"Index type: {type(df.index)}")
+    print("Data types of columns:")
+    print(df.dtypes)
+    print("\nFirst few rows of the DataFrame:")
+    print(df.head())
+
+    # Check if 'label' is already the index
+    if df.index.name == 'label':
+        df = df.reset_index()
+
+    # Ensure 'label' is a column
+    if 'label' not in df.columns:
+        raise ValueError("'label' is neither a column nor the index of the DataFrame")
+
+        # Convert the 'label' column to strings
+    df['label'] = df['label'].astype(str)
+
+    # Create a temporary column for sorting
+    df['temp_sort'] = df['label'].astype(int)
+
+    # Group by 'label' and keep the row with the largest spine_vol for each group
+    df_final = df.loc[df.groupby('label')['spine_vol'].idxmax()]
+
+    # Sort the final dataframe by the temporary sort column
+    df_final = df_final.sort_values('temp_sort')
+
+    # Remove the temporary sort column
+    df_final = df_final.drop('temp_sort', axis=1)
+
+    print(f"Original shape: {df.shape}")
+    print(f"Final shape after deduplication: {df_final.shape}")
+
+
+    return df_final
+
+
+
+def spine_vox_measurements(image, labels, dendrite, max_label, neuron_ch, prefix, dendrite_distance, soma_distance, sizes, dist,
+                         settings, locations, filename, logger):
+    """ measures intensity of each channel, as well as distance to dendrite
+    Args:
+        labels (detected cells)
+        settings (dictionary of settings)
+
+    Returns:
+        pandas table and labeled spine image
+    """
+
+
+    if len(image.shape) == 3:
+        image = np.expand_dims(image, axis=1)
+
+    # Measure channel 1:
+    #logger.info("    Making final morphology and intensity measurements for channel 1...")
+    # logger.info(f" {labels.shape}, {image.shape}")
+    main_table = pd.DataFrame(
+        measure.regionprops_table(
+            labels,
+            intensity_image=image[:, 0, :, :],
+            properties=['label', 'mean_intensity', 'max_intensity'],
+        )
+    )
+
+    # rename mean intensity
+    main_table.rename(columns={'mean_intensity': f'{prefix}_C1_mean_int'}, inplace=True)
+    main_table.rename(columns={'max_intensity': f'{prefix}_C1_max_int'}, inplace=True)
+    #main_table.rename(columns={'area': f'{prefix}_vol_vox'}, inplace=True)
+
+
+    # measure remaining channels
+    for ch in range(image.shape[1] - 1):
+        logger.info(f"    Measuring channel {ch + 2}...")
+        # Measure
+        table = pd.DataFrame(
+            measure.regionprops_table(
+                labels,
+                intensity_image=image[:, ch + 1, :, :],
+                properties=['label', 'mean_intensity', 'max_intensity'],
+            )
+        )
+
+        # rename mean intensity
+        table.rename(columns={'mean_intensity': f'{prefix}_C' + str(ch + 2) + '_mean_int'}, inplace=True)
+        table.rename(columns={'max_intensity': f'{prefix}_C' + str(ch + 2) + '_max_int'}, inplace=True)
+
+        Mean = table[f'{prefix}_C' + str(ch + 2) + '_mean_int']
+        Max = table[f'{prefix}_C' + str(ch + 2) + '_max_int']
+
+        # combine columns with main table
+        main_table = main_table.join(Mean)
+        main_table = main_table.join(Max)
+        #main_table[f'{prefix}_C' + str(ch + 2) + '_int_density'] = main_table[f'{prefix}_vol_vox'] * main_table[
+        #    f'{prefix}_C' + str(ch + 2) + '_mean_int']
+
+
+    if prefix == 'head':
+        if settings.use_vox_measurements == False:
+            distance_table = pd.DataFrame(
+                measure.regionprops_table(
+                    labels,
+                    intensity_image=dendrite_distance,
+                    properties=['label', 'min_intensity', 'max_intensity'
+                               ],  # area is volume for 3D images
+                )
+            )
+        else:
+            try:
+
+                distance_table = pd.DataFrame(
+                    measure.regionprops_table(
+                        labels,
+                        intensity_image=dendrite_distance,
+                        properties=['label', 'min_intensity', 'max_intensity',
+                                    'area_bbox', 'extent', 'solidity', 'area_convex',
+                                    'axis_major_length', 'axis_minor_length', 'feret_diameter_max'
+                                    ],  # area is volume for 3D images
+                    )
+                )
+            except ValueError as e:
+                logger.info(f"                Convex hull calculation failed: {str(e)}. Filtering problematic spines and retrying.\n    "
+                            f"                Typically occurs when spines are detected at the edge of the image volume and can be addressed by padding \n                or adding a few slices above and below.")
+                try:
+                    labels, num_valid = filter_invalid_objects(labels, min_volume=settings.neuron_spine_size[0], min_dims=3)
+                    distance_table = pd.DataFrame(
+                        measure.regionprops_table(
+                            labels,
+                            intensity_image=dendrite_distance,
+                            properties=['label', 'min_intensity', 'max_intensity',
+                                        'area_bbox', 'extent', 'solidity', 'area_convex',
+                                        'axis_major_length', 'axis_minor_length', 'feret_diameter_max'
+                                        ],  # area is volume for 3D images
+                        )
+                    )
+                except ValueError as e2:
+                    logger.info(f"                Convex hull calculation failed again: {str(e2)}. Using fallback properties.")
+                    distance_table = pd.DataFrame(
+                        measure.regionprops_table(
+                            labels,
+                            intensity_image=dendrite_distance,
+                            properties=['label', 'min_intensity','max_intensity']))
+
+                    # Add placeholder columns for missing properties
+                    distance_table['area_bbox'] = np.nan
+                    distance_table['extent'] = np.nan
+                    distance_table['solidity'] = np.nan
+                    distance_table['area_convex'] = np.nan
+                    distance_table['axis_major_length'] = np.nan
+                    distance_table['axis_minor_length'] = np.nan
+                    distance_table['feret_diameter_max'] = np.nan
+
+        # rename distance column
+        distance_table.rename(columns={'min_intensity': 'head_euclidean_dist_to_dend'}, inplace=True)
+        distance_table.rename(columns={'max_intensity': 'spine_length_euclidean'}, inplace=True)
+
+        if settings.use_vox_measurements == True:
+            distance_table.rename(columns={'area_bbox': 'head_bbox_vox'}, inplace=True)
+            distance_table.rename(columns={'extent': 'head_extent_vox'}, inplace=True)
+            distance_table.rename(columns={'solidity': 'head_solidity_vox'}, inplace=True)
+            distance_table.rename(columns={'area_convex': 'head_vol_convex_vox'}, inplace=True)
+            distance_table.rename(columns={'axis_major_length': 'head_major_length_vox'}, inplace=True)
+            distance_table.rename(columns={'axis_minor_length': 'head_minor_length_vox'}, inplace=True)
+
+            distance_col = distance_table[
+                               "head_bbox_vox"] * settings.input_resXY * settings.input_resXY * settings.input_resZ
+            main_table = main_table.join(distance_col)
+
+            distance_col = distance_table["head_extent_vox"]
+            main_table = main_table.join(distance_col)
+
+            distance_col = distance_table["head_solidity_vox"]
+            main_table = main_table.join(distance_col)
+
+            distance_col = distance_table[
+                               "head_vol_convex_vox"] * settings.input_resXY * settings.input_resXY * settings.input_resZ
+            main_table = main_table.join(distance_col)
+
+            distance_col = distance_table["head_major_length_vox"] * settings.input_resXY
+            main_table = main_table.join(distance_col)
+
+            distance_col = distance_table["head_minor_length_vox"] * settings.input_resXY
+            main_table = main_table.join(distance_col)
+
+        #distance_col = distance_table["spine_length_dm"] * settings.input_resXY
+        #main_table = main_table.join(distance_col)
+        #main_table = tables.move_column(main_table, 'spine_length_dm', 2)
+
+        distance_col = distance_table["head_euclidean_dist_to_dend"]* settings.input_resXY
+        main_table = main_table.join(distance_col)
+        main_table = tables.move_column(main_table, 'head_euclidean_dist_to_dend', 2)
+        distance_col = distance_table["spine_length_euclidean"]  * settings.input_resXY
+        main_table = main_table.join(distance_col)
+        main_table = tables.move_column(main_table, 'spine_length_euclidean', 3)
+
+
+
+        if np.max(soma_distance) > 0:
+            # measure distance to dendrite
+            logger.info("      Measuring distances to soma...")
+            soma_distance_table = pd.DataFrame(
+                measure.regionprops_table(
+                    labels,
+                    intensity_image=soma_distance,
+                    properties=['label', 'min_intensity', 'max_intensity'],  # area is volume for 3D images
+                )
+            )
+            soma_distance_table.rename(columns={'min_intensity': 'euclidean_dist_to_soma'}, inplace=True)
+            distance_col = soma_distance_table["euclidean_dist_to_soma"] *settings.input_resXY
+            main_table = main_table.join(distance_col)
+        else:
+            main_table['euclidean_dist_to_soma'] = pd.NA
+
+
+        main_table = tables.move_column(main_table, 'euclidean_dist_to_soma', 3)
+
+    if prefix == 'spine' and settings.use_vox_measurements == True:
+
+        try:
+            distance_table = pd.DataFrame(
+                measure.regionprops_table(
+                    labels,
+                    intensity_image=dendrite_distance,
+                    properties=['label',
+                                'area_bbox', 'extent', 'solidity', 'area_convex',
+                                'axis_major_length', 'axis_minor_length', 'feret_diameter_max'
+                                ],
+                )
+            )
+        except ValueError as e:
+            logger.info(f"                Convex hull calculation failed for some spines: {str(e)} Filtering problematic spines and retrying.")
+            try:
+                labels, num_valid = filter_invalid_objects(labels, min_volume=settings.neuron_spine_size[0], min_dims=3)
+                distance_table = pd.DataFrame(
+                    measure.regionprops_table(
+                        labels,
+                        intensity_image=dendrite_distance,
+                        properties=['label',
+                                    'area_bbox', 'extent', 'solidity', 'area_convex',
+                                    'axis_major_length', 'axis_minor_length', 'feret_diameter_max'
+                                    ],
+                    )
+                )
+            except ValueError as e2:
+
+                # Fall back to properties that don't require convex hull
+                logger.info(f"                Convex hull calculation failed for some spines: {str(e2)} Using fallback properties.")
+                distance_table = pd.DataFrame()
+
+                # Add placeholder columns for missing properties
+                distance_table['area_bbox'] = np.nan
+                distance_table['extent'] = np.nan
+                distance_table['solidity'] = np.nan
+                distance_table['area_convex'] = np.nan
+                distance_table['axis_major_length'] = np.nan
+                distance_table['axis_minor_length'] = np.nan
+                distance_table['feret_diameter_max'] = np.nan
+
+        # rename distance column
+        distance_table.rename(columns={'area_bbox': 'spine_bbox_vox'}, inplace=True)
+        distance_table.rename(columns={'extent': 'spine_extent_vox'}, inplace=True)
+        distance_table.rename(columns={'solidity': 'spine_solidity_vox'}, inplace=True)
+        #distance_table.rename(columns={'area_convex': 'spine_vol_convex'}, inplace=True)
+        distance_table.rename(columns={'axis_major_length': 'spine_major_length_vox'}, inplace=True)
+        distance_table.rename(columns={'axis_minor_length': 'spine_minor_length_vox'}, inplace=True)
+
+        distance_col = distance_table["spine_bbox_vox"] * settings.input_resXY * settings.input_resXY * settings.input_resZ
+        main_table = main_table.join(distance_col)
+
+        distance_col = distance_table["spine_extent_vox"] * settings.input_resXY
+        main_table = main_table.join(distance_col)
+
+        distance_col = distance_table["spine_solidity_vox"] * settings.input_resXY
+        main_table = main_table.join(distance_col)
+
+       # distance_col = distance_table["spine_vol_convex"] * settings.input_resXY * settings.input_resXY * settings.input_resZ
+       # main_table = main_table.join(distance_col)
+
+        distance_col = distance_table["spine_major_length_vox"] * settings.input_resXY
+        main_table = main_table.join(distance_col)
+
+        #distance_col = distance_table["spine_minor_length"] * settings.input_resXY
+        #main_table = main_table.join(distance_col)
+
+
+    if settings.Track != True:
+        # update label numbers based on offset
+        main_table['label'] += max_label
+        labels[labels > 0] += max_label
+        labels = create_filtered_labels_image(labels, main_table, logger)
+
+    #else:
+
+        # Clean up label image to remove objects from image.
+        #ids_to_keep = set(filtered_table['label'])  # Extract IDs to keep from your filtered DataFrame
+        # Create a mask
+        #mask_to_keep = np.isin(labels, list(ids_to_keep))
+        # Apply the mask: set pixels not in `ids_to_keep` to 0
+        #labels = np.where(mask_to_keep, labels, 0)
+
+    # update to included dendrite_id
+    #filtered_table.insert(4, 'dendrite_id', dendrite)
+
+
+    # logger.info(f"  filtered table before image filter = {len(filtered_table)}. ")
+    # logger.info(f"  image labels before filter = {np.max(labels)}.")
+    # integrated_density
+
+    #main_table = main_table.drop([f'{prefix}_vol_vox'], axis=1)
+    # Drop unwanted columns
+    # filtered_table = filtered_table.drop(['spine_vol','spine_length', 'dist_to_dendrite', 'dist_to_soma'], axis=1)
+    #logger.info(
+    #    f"     After filtering {len(filtered_table)} spines were analyzed from a total of {len(main_table)} putative spines")
+
+    return main_table, labels
+
+
+def filter_invalid_objects(labels, min_volume=10, min_dims=2):
+    """
+    Enhanced filtering of objects that would cause problems with convex hull or Feret diameter.
+
+    Parameters:
+    -----------
+    labels : ndarray
+        Label image containing the segmented objects
+    min_volume : int
+        Minimum volume (in voxels) for an object to be considered valid
+    min_dims : int
+        Minimum number of dimensions that should have > 1 pixel extent
+
+    Returns:
+    --------
+    valid_labels : ndarray
+        Label image with only valid objects
+    num_valid : int
+        Number of valid objects after filtering
+    """
+    # Create a copy of labels
+    valid_labels = np.zeros_like(labels)
+
+    # Get all region properties at once (much faster than one by one)
+    props = measure.regionprops(labels)
+
+    for prop in props:
+        # Skip small objects
+        if prop.area < min_volume:
+            continue
+
+        # Check dimensionality via bounding box
+        bbox = prop.bbox
+        if len(bbox) == 6:  # 3D case
+            dims = np.array([(bbox[i + 3] - bbox[i]) for i in range(3)])
+
+            # Calculate dimension ratios to detect flat objects
+            sorted_dims = np.sort(dims)
+            smallest_to_largest_ratio = sorted_dims[0] / sorted_dims[2] if sorted_dims[2] > 0 else 0
+
+            # Skip objects that are too flat (causing QHull errors)
+            # The threshold can be adjusted based on your specific data
+            if smallest_to_largest_ratio < 0.4:
+                continue
+
+            # Check for coplanarity by analyzing coordinates
+            coords = prop.coords
+            if coords.shape[0] > 0:
+                # Calculate principal components to detect if points lie in a plane
+                centered_coords = coords - np.mean(coords, axis=0)
+                # Use SVD to check for planarity - if smallest singular value is very small, object is planar
+                _, s, _ = np.linalg.svd(centered_coords, full_matrices=False)
+                if len(s) >= 3 and s[2] / s[0] < 0.05:  # Ratio of smallest to largest singular value
+                    continue
+        else:  # 2D case
+            dims = np.array([(bbox[i + 2] - bbox[i]) for i in range(2)])
+
+        # Only keep objects with sufficient dimensionality
+        if np.sum(dims > 1) >= min_dims:
+            valid_labels[labels == prop.label] = prop.label
+
+        # Get the number of valid objects
+    num_valid = len(np.unique(valid_labels)) - (1 if 0 in valid_labels else 0)
+
+    return valid_labels, num_valid
+
+
+##############################################################################
+# Helper Functions
+##############################################################################
+
+
+def check_image_shape(image,logger):
+    if len(image.shape) > 3:
+        #Multichannel input format variability
+        # Enable/modify if issues with different datasets to ensure consistency
+        smallest_axis = np.argmin(image.shape)
+        if smallest_axis != 1:
+            # Move the smallest axis to position 2
+            image = np.moveaxis(image, smallest_axis, 1)
+            logger.info(f"   Channels moved ZCYX - raw data now has shape {image.shape}") #ImageJ supports TZCYX order
+    else:
+        image = np.expand_dims(image, axis=1)
+
+    return image
+
+
+def contrast_stretch(image, pmin=2, pmax=98):
+    p2, p98 = np.percentile(image, (pmin, pmax))
+    return exposure.rescale_intensity(image, in_range=(p2, p98))
+
+
+##############################################################################
+# Table Functions
+##############################################################################
+
+
+
+##############################################################################
+# Sub-Functions
+##############################################################################
+
+
+def pathfinding_v3b(object_subvolume_gpu, target_subvolume_gpu, intensity_image_gpu, logger):
+    """
+    Pathfinding that combines distance map and intensity image to prioritize brighter voxels,
+    with optimized start and end point selection.
+    """
+    # Compute the distance map from the target subvolume
+    distance_map_gpu = cp_ndimage.distance_transform_edt(1 - target_subvolume_gpu)
+
+    # Normalize the intensity image to match the scale of the distance map
+    intensity_image_gpu = cp.asarray(intensity_image_gpu)
+    # Create a mask for the object (1 where there's no object, 0 where there is)
+    object_mask_gpu = 1 - object_subvolume_gpu
+
+    # Apply the object mask to the intensity image
+    intensity_image_gpu = intensity_image_gpu * object_mask_gpu
+
+    # Check if intensity image has any non-zero values
+    if cp.max(intensity_image_gpu) > 0:
+        normalized_intensity_gpu = intensity_image_gpu / cp.max(intensity_image_gpu)
+    else:
+        normalized_intensity_gpu = intensity_image_gpu  # If all zeros, keep as is
+        logger.info("        Intensity image is all zeros, skipping normalization")
+
+    # Apply gamma correction to increase the influence of brighter voxels
+    gamma = 0.4  # Adjust this value to fine-tune the brightness influence
+    gamma_corrected_intensity = cp.power(normalized_intensity_gpu, gamma)
+
+    # Create blurred intensity image
+    blurred_intensity_gpu = cp_ndimage.gaussian_filter(gamma_corrected_intensity, sigma=[0.25, 10, 10])
+
+    # Normalize the distance map to [0, 1]
+    max_distance = cp.max(distance_map_gpu)
+    if max_distance > 0:
+        normalized_distance_map_gpu = distance_map_gpu / (max_distance + 1e-6)
+    else:
+        normalized_distance_map_gpu = distance_map_gpu
+        logger.info("        Distance map is all zeros, skipping normalization")
+
+    # Invert the intensity so that brighter voxels have lower values (to minimize)
+    intensity_weight = 0.2  # Adjust this weight to balance distance and intensity
+    blurred_intensity_weight = 0.3
+    epsilon = 1e-6
+    augmented_map_gpu = normalized_distance_map_gpu / (
+            intensity_weight * gamma_corrected_intensity +
+            blurred_intensity_weight * blurred_intensity_gpu +
+            epsilon
+    )
+
+    # Apply Gaussian smoothing to reduce noise and create a smoother path
+    sigma = [0.5, 0.5, 0.5]  # Adjust these values for each dimension
+    augmented_map_gpu = cp_ndimage.gaussian_filter(augmented_map_gpu, sigma)
+
+    # Convert augmented map, object, and target to NumPy for processing
+    augmented_map = augmented_map_gpu.get()
+    object_volume = object_subvolume_gpu.get()
+    target_volume = target_subvolume_gpu.get()
+
+    # Find potential start points (near the object)
+    dilated_object = ndimage.binary_dilation(object_volume, iterations=1)
+    start_candidates = np.argwhere(dilated_object & ~object_volume)
+
+    # Check if we have valid start points
+    if len(start_candidates) == 0:
+        print("        No valid start candidates found in pathfinding_v3b")
+        return None, augmented_map_gpu.get()
+
+    # Find potential end points (on the target)
+    modified_target = np.logical_xor((ndimage.binary_dilation(target_volume, iterations=1)), target_volume)
+    end_candidates = np.argwhere(modified_target)
+
+    # Check if we have valid end points
+    if len(end_candidates) == 0:
+        print("        No valid end candidates found in pathfinding_v3b")
+        return None, augmented_map_gpu.get()
+
+    # Find the best start and end points
+    best_start = min(start_candidates, key=lambda p: augmented_map[tuple(p)])
+    best_end = min(end_candidates, key=lambda p: augmented_map[tuple(p)])
+
+    # Initialize the path
+    path = []
+    current_point = tuple(best_start)
+    path.append(current_point)
+
+    max_iterations = 200  # Increased to allow for longer paths
+    reached_target = False
+    for _ in range(max_iterations):
+        z, y, x = current_point
+
+        # Get possible moves
+        neighbors = [
+            (int(z + dz), int(y + dy), int(x + dx))
+            for dz in [-1, 0, 1] for dy in [-1, 0, 1] for dx in [-1, 0, 1]
+            if (0 <= z + dz < augmented_map.shape[0] and
+                0 <= y + dy < augmented_map.shape[1] and
+                0 <= x + dx < augmented_map.shape[2] and
+                not target_volume[z + dz, y + dy, x + dx])
+        ]
+
+        # Check if we have valid neighbors
+        if not neighbors:
+            # No valid moves available, terminate the path
+            break
+
+        # Sort neighbors by the augmented map value
+        neighbors.sort(key=lambda p: augmented_map[p])
+
+        # Find the best move
+        best_move = neighbors[0]
+
+        # Try to create a z_only_move if possible
+        z_only_move = (int(z + np.sign(best_move[0] - z)), y, x)
+
+        # Check if z_only_move is valid
+        z_move_valid = (0 <= z_only_move[0] < augmented_map.shape[0] and
+                        not target_volume[z_only_move])
+
+        # If moving only in Z is better or the same and valid, prefer that
+        if z_move_valid and augmented_map[z_only_move] <= augmented_map[best_move]:
+            next_point = z_only_move
+        else:
+            next_point = best_move
+
+        # Stop if the next point is at the modified target
+        if modified_target[next_point]:
+            path.append(next_point)
+            reached_target = True
+            break
+
+        # Update current point and path
+        current_point = next_point
+        path.append(current_point)
+
+    if reached_target:
+        return path, augmented_map_gpu.get()
+    else:
+        print("      Path finding failed: did not reach the target.")
+        return None, augmented_map_gpu.get()
+
+def unpad_subvolume_gpu(subvolume_gpu, pad_width):
+    return subvolume_gpu[pad_width:-pad_width, pad_width:-pad_width, pad_width:-pad_width]
 
 def mesh_volume(verts, faces):
     v0 = verts[faces[:, 0]]
@@ -1507,53 +2522,6 @@ def mesh_neck_width_and_length_closest(volume, verts, closest_point, logger, sca
 
 
 
-def extract_subvolumes_GPU_batch(labeled_array, labels, padding=5):
-    """
-    Extract subvolumes for multiple labels in parallel on GPU using CuPy.
-
-    Args:
-        labeled_array (cp.ndarray): Labeled array where each unique label represents a distinct region.
-        labels (cp.ndarray): Array of unique labels to extract.
-        padding (int): Padding to apply around the bounding box of each labeled region.
-
-    Returns:
-        subvolumes (list of cp.ndarray): List of subvolumes for each label.
-        coords (list of cp.ndarray): List of start coordinates for each subvolume.
-    """
-    subvolumes = []
-    start_coords = []
-
-    # Convert to CuPy array if it's not already
-    labeled_array = cp.asarray(labeled_array)
-    labels = cp.asarray(labels)
-
-    # Get binary masks for all labels in one batch operation
-    binary_masks = labeled_array[:, :, :, None] == labels[None, None, None, :]  # Shape: (z, y, x, n_labels)
-
-    # Iterate through the labels and process each label's subvolume in parallel
-    for idx, label in enumerate(labels):
-        # Find the coordinates of the current label
-        #print(f"Processing label {label}...")
-        binary_mask = binary_masks[..., idx]
-        coords = cp.argwhere(binary_mask)
-
-        # Check if there are any coordinates for the current label
-        if coords.size == 0:
-            continue
-
-        # Compute the start and end coordinates with padding
-        start = cp.maximum(cp.min(coords, axis=0) - padding, 0)
-        end = cp.minimum(cp.max(coords, axis=0) + padding + 1, cp.array(labeled_array.shape))
-
-        # Extract the subvolume for the current label
-        subvolume = labeled_array[start[0]:end[0], start[1]:end[1], start[2]:end[2]] == label
-
-        # Store the subvolume and the start coordinates
-        subvolumes.append(subvolume)
-        start_coords.append(start)
-
-    return subvolumes, cp.stack(start_coords)
-
 def extract_subvolumes_mulitchannel_GPU_batch(multi_channel_array, labels, padding=5):
     subvolumes = []
     start_coords = []
@@ -1652,146 +2620,6 @@ def import_tiff_files_to_cupy_list(folder_path):
         imported_list.append(image)
 
     return imported_list
-
-
-def second_pass_annotation(head_labels_vol, neck_labels_vol, dendrite_vol, neuron_vol, locations, settings, logger):
-    #dendrites and labels and must be binarized for further analysis
-    #ensure data is rescaled to match second pass model
-
-    start_time = time.time()
-    free_mem, total_mem = cp.cuda.runtime.memGetInfo()
-    logger.info(f"       Available GPU memory: {free_mem / 1e9:.2f} GB")
-    # estimate requirements
-    avg_size = 8 / settings.refinement_Z * 8 /  settings.refinement_XY * 8 /  settings.refinement_XY  # spine or neck
-    batch_size = max(1, int(free_mem * 0.7 / (avg_size * 4)))  # 4 bytes per float32
-    #print(f"Using batch size: {batch_size}")
-
-    # Move data to GPU and create multi-channel array
-    cp_multi_channel = cp.stack([cp.asarray(head_labels_vol+neck_labels_vol),
-                                            cp.asarray(neck_labels_vol > 0),
-                                            cp.asarray(dendrite_vol >0),
-                                            cp.asarray(neuron_vol)], axis=-1)
-
-    # Get unique labels from array A (excluding background)
-    labels = cp.unique(cp_multi_channel[:, :, :, 0])
-    labels = labels[labels != 0]
-
-
-
-      #batch
-    for i in range(0, len(labels), batch_size):
-        batch_labels = labels[i:i + batch_size]
-        logger.info(f"      Processing batch {i // batch_size + 1} of {len(labels) // batch_size + 1}...")
-
-        # Extract subvolumes
-        sub_volumes, start_coords = extract_subvolumes_mulitchannel_GPU_batch_2ndpass(cp_multi_channel, batch_labels)
-
-        #save each subvolume as a tiff in a folder
-        for subvol, label in zip(sub_volumes, batch_labels):
-
-
-            # save as tif and resahpe for imageJ
-            imwrite_filename = os.path.join(locations.nnUnet_2nd_pass, f"subvol_{10000+label}_0000.tif")
-            # imageJ ZCYX - currently ZYXC so fix
-
-            # subvol_out = subvol.get()
-            imwrite(imwrite_filename, subvol[:,:,:,3].get().transpose(0, 1, 2).astype(np.uint16), compression=('zlib', 1), imagej=True,
-                    photometric='minisblack', metadata={'unit': 'um', 'axes': 'ZYX'})
-
-            #process with nnunet
-
-        # split the path into subdirectories
-        subdirectories = os.path.normpath(settings.refinement_model_path).split(os.sep)
-        last_subdirectory = subdirectories[-1]
-        # find all three digit sequences in the last subdirectory
-        matches = re.findall(r'\d{3}', last_subdirectory)
-        # If there's a match, assign it to a variable
-        dataset_id = matches[0] if matches else None
-
-        logger.info("\nPerforming spine refinement on GPU...\n")
-        #create dir locations.nnUnet_2nd_pass+'\labels'
-        if not os.path.exists(locations.nnUnet_2nd_pass+'\labels'):
-            os.makedirs(locations.nnUnet_2nd_pass+'\labels')
-
-        ##uncomment if issues with nnUnet
-        # logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
-
-        return_code = run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env,
-                                         locations.nnUnet_2nd_pass, locations.nnUnet_2nd_pass+'\labels', dataset_id, settings.nnUnet_type,
-                                         settings, logger)
-
-        logger.info(f"Updating subvolumes with refined labels...")
-
-        #import all tifs in output folder as updated_sub_volumes .tif
-        updated_sub_volumes = import_tiff_files_to_cupy_list(locations.nnUnet_2nd_pass+'\labels')
-
-        multi_channel_subvolumes = []
-
-        for subvolume, label in zip(updated_sub_volumes, labels):
-            # Create boolean masks for each channel
-            c0 = (subvolume == 1).astype(cp.float32) * label  # Multiply by label
-            c1 = (subvolume == 2).astype(cp.float32)
-            c2 = (subvolume == 4).astype(cp.float32)  * label  # Multiply by label
-
-            # Stack the channels to create a multi-channel array
-            multi_channel = cp.stack([c0, c1, c2], axis=-1)
-
-            multi_channel_subvolumes.append(multi_channel)
-        # Clean up label folder
-        # delete nnunet input folder and files
-        if settings.save_intermediate_data == False:
-
-            shutil.rmtree(locations.nnUnet_2nd_pass)
-            shutil.rmtree(locations.nnUnet_2nd_pass+'\labels')
-
-        # Insert processed subvolumes back into the original image
-        logger.info(f"Inserting refined subvolumes back into the original image...")
-        cp_multi_channel = insert_subvolumes(cp_multi_channel, multi_channel_subvolumes, start_coords, labels)
-
-    return cp_multi_channel
-
-
-def insert_subvolumes(original_image, processed_subvolumes, start_coords, labels):
-    # Create a mask for the areas we've modified
-    modified_mask = cp.zeros(original_image.shape[:3], dtype=bool)
-
-    for subvolume, start, label in zip(processed_subvolumes, start_coords, labels):
-        end = start + cp.array(subvolume.shape[:3])
-
-        # Create a mask for the current label in the original image
-        label_mask = original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 0] == label
-
-        # Update the modified mask
-        modified_mask[start[0]:end[0], start[1]:end[1], start[2]:end[2]] |= label_mask
-
-        # Clear the areas corresponding to the current label in c0 and c1
-        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 0] = cp.where(label_mask, 0,
-                                                                                        original_image[start[0]:end[0],
-                                                                                        start[1]:end[1],
-                                                                                        start[2]:end[2], 0])
-        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 1] = cp.where(label_mask, 0,
-                                                                                        original_image[start[0]:end[0],
-                                                                                        start[1]:end[1],
-                                                                                        start[2]:end[2], 1])
-
-        # Add the subvolume data where it's non-zero
-        subvolume_mask = subvolume > 0
-        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 0] += cp.where(subvolume_mask[..., 0],
-                                                                                         subvolume[..., 0], 0)
-        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 1] += cp.where(subvolume_mask[..., 2],
-                                                                                         subvolume[..., 2], 0)
-
-        # For c2, combine using logical OR
-        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 2] = cp.logical_or(
-            original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 2],
-            subvolume[..., 1] > 0
-        ).astype(original_image.dtype)
-
-    # Clear any remaining voxels in c0 and c1 that weren't replaced
-    original_image[:, :, :, 0] = cp.where(modified_mask, original_image[:, :, :, 0], 0)
-    original_image[:, :, :, 1] = cp.where(modified_mask, original_image[:, :, :, 1], 0)
-
-    return original_image
 
 
 def log_memory_usage(logger):
@@ -2005,10 +2833,10 @@ def process_spine_batch_tile(tile, tile_spine, tile_head, tile_dendrite, tile_ne
 
         #dendrite_ids = find_closest_dendrite_id(closest_points, batch_dendrite)
         # print(dendrite_ids)
-        if settings.additional_logging == True:
-            logger.info(f"batch_data dtype: {batch_data.dtype}, shape: {batch_data.shape}")
-            logger.info(f"batch_dendrite dtype: {batch_dendrite.dtype}, shape: {batch_dendrite.shape}")
-            logger.info(f"closest_points dtype: {closest_points.dtype}, shape: {closest_points.shape}")
+        #if settings.additional_logging == True:
+        #    logger.info(f"batch_data dtype: {batch_data.dtype}, shape: {batch_data.shape}")
+        #    logger.info(f"batch_dendrite dtype: {batch_dendrite.dtype}, shape: {batch_dendrite.shape}")
+        #    logger.info(f"closest_points dtype: {closest_points.dtype}, shape: {closest_points.shape}")
             #logger.info(f"dendrite_ids dtype: {dendrite_ids.dtype}, shape: {dendrite_ids.shape}")
 
         # Process spines and pass midlines on for neck and head analysis
@@ -2047,315 +2875,69 @@ def process_spine_batch_tile(tile, tile_spine, tile_head, tile_dendrite, tile_ne
             logger.info(f"      Time taken for mesh measurements of spine heads: {time.time() - t0:.2f} seconds")
         # Combine results for this batch
 
-        for r_spine, r_neck, r_head  in zip(spine_results, neck_results, head_results ):
+        g = lambda d, k: d.get(k, np.nan)
+
+        for r_spine, r_neck, r_head in zip(spine_results, neck_results, head_results):
+            # convex hull ration
+            head_conv = g(r_head, 'head_convex_vol')
+            head_vol = g(r_head, 'head_volume')
+            hull_ratio = (
+                np.nan
+                if (np.isnan(head_conv) or np.isnan(head_vol) or head_vol == 0)
+                else (head_conv - head_vol) / head_vol
+            )
+
             tile_results.append({
                 'label': r_spine['ID'],
-                #'dendrite_id': int(dend_id),
-                'start_coords': r_spine['start_coords'],
-                'spine_area': r_spine['spine_area'],
-                'spine_vol_m': r_spine['spine_volume'],
-                'spine_sa_m': r_spine['spine_surface_area'],
-                'spine_length': r_spine['spine_length'],
-                'head_area': r_head['head_area'],
-                'head_vol_m': r_head['head_volume'],
-                'head_sa_m': r_head['head_surface_area'],
-                'head_length': r_head['head_length'],
-                # 'head_width_min': r_head['head_min_width'],
-                # 'head_width_max': r_head['head_max_width'],
-                'head_width_mean_m': r_head['head_mean_width'],
-                'neck_area': r_neck['neck_area'],
-                'neck_vol_m': r_neck['neck_volume'],
-                'neck_sa_m': r_neck['neck_surface_area'],
-                'neck_length': r_neck['neck_length'],
-                'neck_width_min_m': r_neck['neck_min_width'],
-                'neck_width_max_m': r_neck['neck_max_width'],
-                'neck_width_mean_m': r_neck['neck_mean_width']
+                # 'dendrite_id': int(dend_id),
+                # -------------  spine -----------------
+                'start_coords': g(r_spine, 'start_coords'),
+                'spine_area': g(r_spine, 'spine_area'),
+                'spine_vol': g(r_spine, 'spine_volume'),
+                'spine_surf_area': g(r_spine, 'spine_surface_area'),
+                'spine_length': g(r_spine, 'spine_length'),
+                'spine_bbox_vol': g(r_spine, 'spine_bbox_vol'),
+                'spine_extent': g(r_spine, 'spine_extent'),
+                'spine_solidity': g(r_spine, 'spine_solidity'),
+                'spine_convex_vol': g(r_spine, 'spine_convex_vol'),
+                'spine_axis_major': g(r_spine, 'spine_axis_major'),
+                'spine_axis_minor': g(r_spine, 'spine_axis_minor'),
+
+                # -------------  head ------------------
+                'head_width_mean': g(r_head, 'head_mean_width'),
+                'head_area': g(r_head, 'head_area'),
+                'head_vol': head_vol,
+                'head_surf_area': g(r_head, 'head_surface_area'),
+                'head_length': g(r_head, 'head_length'),
+                'head_bbox_vol': g(r_head, 'head_bbox_vol'),
+                'head_extent': g(r_head, 'head_extent'),
+                'head_solidity': g(r_head, 'head_solidity'),
+                'head_convex_vol': head_conv,
+                'head_axis_major': g(r_head, 'head_axis_major'),
+                'head_axis_minor': g(r_head, 'head_axis_minor'),
+
+                'head_convex_hull_ratio': hull_ratio,
+
+                # -------------  neck ------------------
+                'neck_area': g(r_neck, 'neck_area'),
+                'neck_vol': g(r_neck, 'neck_volume'),
+                'neck_surf_area': g(r_neck, 'neck_surface_area'),
+                'neck_length': g(r_neck, 'neck_length'),
+                'neck_width_min': g(r_neck, 'neck_min_width'),
+                'neck_width_max': g(r_neck, 'neck_max_width'),
+                'neck_width_mean': g(r_neck, 'neck_mean_width'),
+                'neck_bbox_vol': g(r_neck, 'neck_bbox_vol'),
+                'neck_extent': g(r_neck, 'neck_extent'),
+                'neck_solidity': g(r_neck, 'neck_solidity'),
+                'neck_convex_vol': g(r_neck, 'neck_convex_vol'),
+                'neck_axis_major': g(r_neck, 'neck_axis_major'),
+                'neck_axis_minor': g(r_neck, 'neck_axis_minor'),
 
                 # 'head_length_calc': r_spine['spine_length'] - r_neck['neck_length'],
                 # 'head_vol_calc': r_spine['spine_volume'] - r_neck['neck_volume']
             })
 
     return tile_results
-
-def analyze_spines_batch_tiled(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings, logger,
-                               scaling):
-    start_time = time.time()
-    results = []
-    shape = spine_labels_vol.shape
-    tile_size = calculate_tile_size(shape, settings, logger)
-    overlap = (10, 50, 50)  # Adjust based on your needs
-
-    # Calculate total number of tiles
-    total_tiles = math.ceil(shape[0] / (tile_size[0] - overlap[0])) * \
-                  math.ceil(shape[1] / (tile_size[1] - overlap[1])) * \
-                  math.ceil(shape[2] / (tile_size[2] - overlap[2]))
-
-    current_tile = 0
-
-    for z in range(0, shape[0], tile_size[0] - overlap[0]):
-        for y in range(0, shape[1], tile_size[1] - overlap[1]):
-            for x in range(0, shape[2], tile_size[2] - overlap[2]):
-                current_tile += 1
-                z_end = min(z + tile_size[0], shape[0])
-                y_end = min(y + tile_size[1], shape[1])
-                x_end = min(x + tile_size[2], shape[2])
-
-                tile_spine = spine_labels_vol[z:z_end, y:y_end, x:x_end]
-                tile_head = head_labels_vol[z:z_end, y:y_end, x:x_end]
-                tile_dendrite = dendrite[z:z_end, y:y_end, x:x_end]
-                tile_neuron = neuron[z:z_end, y:y_end, x:x_end]
-
-
-                logger.info(f"      Processing tile {current_tile} of {total_tiles}: z={z}:{z_end}, y={y}:{y_end}, x={x}:{x_end}")
-
-
-                # Process the tile
-                tile_results = process_spine_batch_tile(f'tile{z}_{y}_{x}', tile_spine, tile_head, tile_dendrite, tile_neuron, locations, settings,
-                                            logger, scaling)
-
-                # Adjust coordinates to global space
-                for result in tile_results:
-                    result['start_coords'] = [coord + offset for coord, offset in
-                                              zip(result['start_coords'], [z, y, x])]
-
-                results.extend(tile_results)
-                cp.get_default_memory_pool().free_all_blocks()
-                cp.get_default_pinned_memory_pool().free_all_blocks()
-
-    spine_results_df = pd.DataFrame(results)
-    spine_results_df = filter_duplicated_spine_results(spine_results_df)
-    logger.info(f"      Total time taken for tiled spine mesh analysis: {time.time() - start_time:.2f} seconds")
-    return spine_results_df
-
-
-def filter_duplicated_spine_results(df):
-    print("Diagnostic information:")
-    print(f"DataFrame shape: {df.shape}")
-    print(f"Column names: {df.columns.tolist()}")
-    print(f"Index name: {df.index.name}")
-    print(f"Index type: {type(df.index)}")
-    print("Data types of columns:")
-    print(df.dtypes)
-    print("\nFirst few rows of the DataFrame:")
-    print(df.head())
-
-    # Check if 'label' is already the index
-    if df.index.name == 'label':
-        df = df.reset_index()
-
-    # Ensure 'label' is a column
-    if 'label' not in df.columns:
-        raise ValueError("'label' is neither a column nor the index of the DataFrame")
-
-        # Convert the 'label' column to strings
-    df['label'] = df['label'].astype(str)
-
-    # Create a temporary column for sorting
-    df['temp_sort'] = df['label'].astype(int)
-
-    # Group by 'label' and keep the row with the largest spine_vol_m for each group
-    df_final = df.loc[df.groupby('label')['spine_vol_m'].idxmax()]
-
-    # Sort the final dataframe by the temporary sort column
-    df_final = df_final.sort_values('temp_sort')
-
-    # Remove the temporary sort column
-    df_final = df_final.drop('temp_sort', axis=1)
-
-    print(f"Original shape: {df.shape}")
-    print(f"Final shape after deduplication: {df_final.shape}")
-
-
-    return df_final
-
-
-def analyze_spines_batch(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings, logger, scaling):
-    #dendrites and labels and must be binarized for further analysis
-
-    start_time = time.time()
-    #free_mem, total_mem = cp.cuda.runtime.memGetInfo()
-    #logger.info(f"       Available GPU memory: {free_mem / 1e9:.2f} GB")
-    mem_required, free_mem, total_mem = check_gpu_memory_requirements(spine_labels_vol, logger)
-    # estimate requirements
-
-    if mem_required > 0.25 * total_mem:
-        logger.info("       Volume exceeds 25% of GPU memory. Implementing tiling strategy.")
-
-        return analyze_spines_batch_tiled(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings,
-                                          logger, scaling)
-
-    # Move data to GPU and create multi-channel array
-    cp_multi_channel = cp.stack([cp.asarray(spine_labels_vol),
-                                cp.asarray(head_labels_vol),
-                                cp.asarray(dendrite),
-                                cp.asarray(neuron)], axis=-1)
-    logger.info(f"       Multi-channel GPU array created.")
-    # Get unique labels from array A (excluding background)
-    labels = cp.unique(cp_multi_channel[:, :, :, 0])
-    labels = labels[labels != 0]
-
-    avg_sub_volume_shape = 6 / scaling[0], 6 / scaling[1], 6 / scaling[2]  # spine or neck
-    dtype_size = 2  # 4 bytes per float32
-    batch_size = calculate_batch_size(mem_required, spine_labels_vol, avg_sub_volume_shape, dtype_size)
-    # print(f"Using batch size: {batch_size}")
-    logger.info(f"       Using batch size of {batch_size} spines...")
-
-    results = []
-
-    #batch
-    for i in range(0, len(labels), batch_size):
-        batch_labels = labels[i:i + batch_size]
-        logger.info(f"        Processing batch {i // batch_size + 1} of {len(labels) // batch_size + 1}...")
-
-        # Extract subvolumes
-        sub_volumes, start_coords = extract_subvolumes_mulitchannel_GPU_batch(cp_multi_channel, batch_labels)
-
-        #logger shape
-        if settings.additional_logging == True:
-            logger.info(f"Subvolumes shape: {len(sub_volumes)}")
-            #log dimensions of subvolumes0
-            logger.info(f"Subvolume 0 shape: {sub_volumes[0].shape}")
-
-        #mask subvolumes
-        #logger.info(f"      Masking subvolumes...")
-        sub_volumes = batch_mask_subvolumes_cp(sub_volumes, batch_labels)
-
-        if settings.additional_logging == True:
-            logger.info(f"Subvolume 0 shape after masking: {sub_volumes[0].shape}")
-
-
-        # Pad subvolumes to allow batching
-        #padded_subvolumes, pad_amounts = pad_subvolumes(sub_volumes, logger)
-
-        padded_subvolumes, pad_amounts = pad_and_center_subvolumes(sub_volumes, settings, logger)
-
-        #Save spine arrays - shape is M
-        if settings.additional_logging == True:
-            logger.info(f"      Saving spine arrays...")
-        #MZYXC to MZCYX for imagej
-        export_subvols = cp.transpose(cp.stack(padded_subvolumes, axis=0), (0, 1, 4, 2,3 ))
-        export_subvols[:,:, :3] = export_subvols[:, :, :3] * 65535 / 2
-        export_subvols[:, :, 0] = export_subvols[:, :, 0] - export_subvols[:, :, 1]
-        export_subvols = cp.asnumpy(export_subvols)
-        #logger.info(export_subvols.shape)
-
-        imwrite(f'{locations.arrays}/Spine_vols_{settings.filename}_b{i // batch_size + 1}.tif', export_subvols.astype(np.uint16), compression=('zlib', 1), imagej=True,
-                photometric='minisblack',
-                metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'TZCYX', 'mode': 'composite'},
-                resolution=(1 / settings.input_resXY, 1 / settings.input_resXY))
-
-        imwrite(f'{locations.arrays}/Spine_MIPs_{settings.filename}_b{i // batch_size + 1}.tif', np.max(export_subvols, axis=1).astype(np.uint16), compression=('zlib', 1), imagej=True,
-                photometric='minisblack',
-                metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX', 'mode': 'composite'},
-                resolution=(1 / settings.input_resXY, 1 / settings.input_resXY))
-
-        #imwrite(f'{locations.arrays}/Spine_slices_{settings.filename}_b{i // batch_size + 1}.tif',
-        #        export_subvols[:,export_subvols.shape[1] // 2].astype(np.uint16), imagej=True,
-        #        photometric='minisblack',
-        #        metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZCYX', 'mode': 'composite'},
-        #        resolution=(1 / settings.input_resXY, 1 / settings.input_resXY))
-
-        del export_subvols
-
-        if settings.additional_logging == True:
-            logger.info(f"Subvolume 0 shape after padding: {padded_subvolumes[0].shape}")
-
-
-        #loop over sub_volumes but also provide a counter
-        #if settings.save_intermediate_data == True:
-        #    for subvol, start_coord, label in zip(sub_volumes, start_coords, batch_labels):
-
-                #save as tif and resahpe for imageJ
-        #        imwrite_filename = os.path.join(locations.Meshes, f"subvol_{label}.tif")
-                #imageJ ZCYX - currently ZYXC so fix
-
-                #subvol_out = subvol.get()
-        #        imwrite(imwrite_filename, subvol.get().transpose(0, 3, 1, 2).astype(np.uint16), imagej=True,
-        #                photometric='minisblack', metadata={'unit': 'um', 'axes': 'ZCYX'})
-
-
-        #generate data for spine
-        batch_data = cp.stack([subvol[:, :, :, 0].astype(cp.float32) for subvol in padded_subvolumes])  # spine volumes
-        batch_dendrite = cp.stack([subvol[:, :, :, 2] for subvol in padded_subvolumes]) #dendrite
-        #binary of batch_dendrite
-        batch_binary = cp.stack([subvol[:, :, :, 2] > 0 for subvol in padded_subvolumes])  # dendrite binary
-
-        # calculate closest points
-        closest_points = find_closest_points_batch(batch_data, batch_binary)
-
-        #updated to remove dendrite id calc as more efficient during geodesic dist analysis
-        #dendrite_ids = find_closest_dendrite_id(closest_points, batch_dendrite)
-        #print(dendrite_ids)
-        if settings.additional_logging == True:
-            logger.info(f"batch_data dtype: {batch_data.dtype}, shape: {batch_data.shape}")
-            logger.info(f"batch_dendrite dtype: {batch_dendrite.dtype}, shape: {batch_dendrite.shape}")
-            logger.info(f"closest_points dtype: {closest_points.dtype}, shape: {closest_points.shape}")
-           # logger.info(f"dendrite_ids dtype: {dendrite_ids.dtype}, shape: {dendrite_ids.shape}")
-
-        # Process spines and pass midlines on for neck and head analysis
-        t0 = time.time()
-
-        spine_results, midlines = batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, batch_labels, scaling, 0, True, None, True, True,"spine", locations, settings, logger)
-        if settings.additional_logging == True:
-            logger.info(f"      Time taken for mesh measurements of spines: {time.time() - t0:.2f} seconds")
-
-
-        # Subtract heads from spines and measure necks and ensure float for marching_cubes
-        batch_data = cp.stack([
-            cp.maximum(subvol[:, :, :, 0] - subvol[:, :, :, 1], 0).astype(cp.float32)
-            for subvol in padded_subvolumes
-        ])
-
-        #for subvol in sub_volumes:
-        #    subvol[:, :, :, 0] = cp.maximum(subvol[:, :, :, 0] - subvol[:, :, :, 1], 0)
-        t0 = time.time()
-
-        neck_results, _ = batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, batch_labels, scaling, 0, False, midlines, True, True, "neck", locations, settings,  logger) #True for min max mean width
-        if settings.additional_logging == True:
-            logger.info(f"      Time taken for mesh measurements of necks: {time.time() - t0:.2f} seconds")
-
-        #now process heads
-        t0 = time.time()
-        batch_data = cp.stack([subvol[:, :, :, 1] for subvol in padded_subvolumes])  # spine vols
-        # Process just heads - but don't need vol for length just surface area
-        head_results, _ = batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, batch_labels, scaling, 1, False, midlines, True, True,"head", locations, settings, logger) #False for width using bounding box
-        if settings.additional_logging == True:
-                logger.info(f"      Time taken for mesh measurements of spine heads: {time.time() - t0:.2f} seconds")
-        # Combine results for this batch
-
-        for r_spine, r_neck, r_head in zip(spine_results, neck_results, head_results):
-            results.append({
-                'label': r_spine['ID'],
-                #'dendrite_id': int(dend_id),
-                'start_coords': r_spine['start_coords'],
-                'spine_area': r_spine['spine_area'],
-                'spine_vol_m': r_spine['spine_volume'],
-                'spine_sa_m': r_spine['spine_surface_area'],
-                'spine_length': r_spine['spine_length'],
-                'head_area': r_head['head_area'],
-                'head_vol_m': r_head['head_volume'],
-                'head_sa_m': r_head['head_surface_area'],
-                'head_length': r_head['head_length'],
-                # 'head_width_min': r_head['head_min_width'],
-                # 'head_width_max': r_head['head_max_width'],
-                'head_width_mean_m': r_head['head_mean_width'],
-                'neck_area': r_neck['neck_area'],
-                'neck_vol_m': r_neck['neck_volume'],
-                'neck_sa_m': r_neck['neck_surface_area'],
-                'neck_length': r_neck['neck_length'],
-                'neck_width_min_m': r_neck['neck_min_width'],
-                'neck_width_max_m': r_neck['neck_max_width'],
-                'neck_width_mean_m': r_neck['neck_mean_width']
-
-                #'head_length_calc': r_spine['spine_length'] - r_neck['neck_length'],
-                #'head_vol_calc': r_spine['spine_volume'] - r_neck['neck_volume']
-            })
-    spine_results_df = pd.DataFrame(results)
-
-    logger.info(f"      Total time taken for mesh analysis: {time.time() - start_time:.2f} seconds")
-
-    return spine_results_df
-
 
 def find_closest_dendrite_id(closest_points, batch_dendrite):
     dendrite_ids = []
@@ -2483,13 +3065,13 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
             if cp.isnan(batch_data).any() or cp.isinf(batch_data).any():
                 logger.error("batch_data contains NaN or Inf values")
                 # Handle the error as appropriate
-        else:
-            logger.info("batch_data is of integer type; skipping NaN and Inf checks")
-        logger.info(f"batch_data dtype: {batch_data.dtype}, shape: {batch_data.shape}")
+        #else:
+            #logger.info("batch_data is of integer type; skipping NaN and Inf checks")
+        #logger.info(f"batch_data dtype: {batch_data.dtype}, shape: {batch_data.shape}")
 
 
     # create folder f'{locations.Meshes}/{settings.filename}
-    if settings.save_val_data:
+    if settings.save_intermediate_data:
         if not os.path.exists(f'{locations.Meshes}/{settings.filename}'):
             os.makedirs(f'{locations.Meshes}/{settings.filename}')
             os.makedirs(f'{locations.Meshes}/{settings.filename}/head')
@@ -2498,25 +3080,25 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
     for i, (subvol, start_coord, closest_point, pad_amount, obj_id, midline) in enumerate(
             zip(batch_data, start_coords, closest_points, pad_amounts, object_ids, midlines)):
 
-        if settings.additional_logging == True:
-            logger.info(f"Processing object ID {obj_id}")
-            logger.info(f"Type of subvol: {type(subvol)}, shape: {subvol.shape}")
-            logger.info(f"Type of start_coord: {type(start_coord)}, value: {start_coord}")
-            logger.info(f"Type of closest_point: {type(closest_point)}, value: {closest_point}")
-            logger.info(f"Type of pad_amount: {type(pad_amount)}, value: {pad_amount}")
-            logger.info(f"Type of midline: {type(midline)}")
-            logger.error(f"subvol contains NaN or Inf values for object ID {obj_id}")
-            logger.info(f"subvol dtype: {subvol.dtype}, shape: {subvol.shape}")
+        #if settings.additional_logging == True:
+            #logger.info(f"Processing object ID {obj_id}")
+            #logger.info(f"Type of subvol: {type(subvol)}, shape: {subvol.shape}")
+            #logger.info(f"Type of start_coord: {type(start_coord)}, value: {start_coord}")
+            #logger.info(f"Type of closest_point: {type(closest_point)}, value: {closest_point}")
+            #logger.info(f"Type of pad_amount: {type(pad_amount)}, value: {pad_amount}")
+            #logger.info(f"Type of midline: {type(midline)}")
+            #logger.error(f"subvol contains NaN or Inf values for object ID {obj_id}")
+            #logger.info(f"subvol dtype: {subvol.dtype}, shape: {subvol.shape}")
 
-            mempool = cp.get_default_memory_pool()
-            logger.info(f"GPU memory used: {mempool.used_bytes() / 1024 ** 2:.2f} MB")
+            #mempool = cp.get_default_memory_pool()
+            #logger.info(f"GPU memory used: {mempool.used_bytes() / 1024 ** 2:.2f} MB")
 
         if cp.issubdtype(subvol.dtype, cp.floating):
             if cp.isnan(subvol).any() or cp.isinf(subvol).any():
                 logger.error(f"subvol contains NaN or Inf values for object ID {obj_id}")
                 # Handle the error as appropriate
-        elif settings.additional_logging == True:
-            logger.info(f"subvol is of integer type; skipping NaN and Inf checks for object ID {obj_id}")
+        #elif settings.additional_logging == True:
+        #    logger.info(f"subvol is of integer type; skipping NaN and Inf checks for object ID {obj_id}")
 
         # Calculate voxel count
 
@@ -2551,8 +3133,23 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
             verts = cp.asarray(verts) * cp.asarray(scaling)
             faces = cp.asarray(faces)
 
+            voxel_vol = voxel_count * scaling[0] * scaling[1] * scaling[2]
+
             volume = mesh_volume(verts, faces)
             surface_area = measure_surface_area_gpu(verts, faces)
+
+
+            bbox_dims = (verts.max(axis=0) - verts.min(axis=0))
+            bbox_vol = float(cp.prod(bbox_dims))
+            hull_vol = float(ConvexHull(cp.asnumpy(verts)).volume)
+            extent = voxel_vol / bbox_vol if bbox_vol else 0.0
+            solidity = voxel_vol / hull_vol if hull_vol else 0.0
+
+            #cov = cp.cov(verts, rowvar=False)
+            #eigvals = cp.linalg.eigvalsh(cov)
+            #axis_major_len = 2.0 * cp.sqrt(3.0 * eigvals[-1]).item()
+            #axis_minor_len = 2.0 * cp.sqrt(3.0 * eigvals[0]).item()
+
             ## NEEDS ATTENTION
             if multiple_widths_option:
                 if voxel_count == 1:
@@ -2606,7 +3203,14 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
                     f'{prefix}_length': float(length),
                     f'{prefix}_min_width': float(min_width),
                     f'{prefix}_max_width': float(max_width),
-                    f'{prefix}_mean_width': float(mean_width)
+                    f'{prefix}_mean_width': float(mean_width),
+                    f'{prefix}_bbox_vol': bbox_vol,
+                    f'{prefix}_extent': extent,
+                    f'{prefix}_solidity': solidity,
+                    f'{prefix}_convex_vol': hull_vol,
+                    #f'{prefix}_axis_major': axis_major_len,
+                    #f'{prefix}_axis_minor': axis_minor_len,
+                    #f'{prefix}_feret_max': feret
                 }
 
             else:
@@ -2621,10 +3225,16 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
                     f'{prefix}_volume': float(volume),
                     f'{prefix}_surface_area': float(surface_area),
                     f'{prefix}_length': float(length),
-                    f'{prefix}_width': float(width)
+                    f'{prefix}_width': float(width),
+                    f'{prefix}_bbox_vol': bbox_vol,
+                    f'{prefix}_extent': extent,
+                    f'{prefix}_solidity': solidity,
+                    f'{prefix}_convex_vol': hull_vol,
+                   # f'{prefix}_axis_major': axis_major_len,
+                   # f'{prefix}_axis_minor': axis_minor_len,
                 }
 
-            if settings.save_val_data:
+            if settings.save_intermediate_data:
                 mesh_filename = f'{locations.Meshes}/{settings.filename}/{prefix}/{obj_id}.obj'
                 save_mesh(verts.get(), faces.get(), mesh_filename)
 
@@ -2797,59 +3407,54 @@ def filter_dendrites(dendrites, settings,logger):
 
     return filt_dendrites
 
+def filter_dendrites_cupy(dendrites_np, settings, logger,
+                     connectivity=3):            # 3 => 26‑conn in 3‑D
+    """
+    Parameters
+    ----------
+    dendrites_np : ndarray  (bool / uint8)
+        Binary dendrite mask in CPU memory.
+    settings     : object   (expects .min_dendrite_vol attr)
+    logger       : logging.Logger
+    connectivity : {1,2,3}
+        1 = 6‑conn, 2 = 18‑conn, 3 = 26‑conn (same as SciPy)
+    """
 
-def calculate_dendrite_length_and_volume_fast(labeled_dendrites, skeleton, logger):
-    skeletonize_time = time.time()
-    skeleton_coords = np.array(np.nonzero(skeleton)).T
-    coords_time = time.time()
-    print(f"Coordinate extraction done in {coords_time - skeletonize_time:.2f} seconds")
-    # Retrieve labels at skeleton points from the original image
-    print("Retrieving labels from skeleton points...")
-    labeled_skeletons = labeled_dendrites[tuple(skeleton_coords.T)]
-    labels_time = time.time()
-    print(f"Label retrieval done in {labels_time - coords_time:.2f} seconds")
+    # ---- move to GPU ----------------------------------------------------
+    dend_cp = cp.asarray(dendrites_np, dtype=cp.bool_)
 
-    multi_time = time.time()
-    print("multiplication approach")
-    # Calculate labeled skeletons
-    #labeled_skeletons2 = skeleton * labeled_dendrites
-    print(f"Multiplication done in {time.time() - multi_time:.2f} seconds")
+    struct = cp.ones((3, 3, 3), dtype=cp.int8) if connectivity == 3 else None
 
-    # Get unique labels, excluding background (0)
-    unique_dendrite_labels = np.unique(labeled_skeletons)
-    unique_dendrite_labels = unique_dendrite_labels[unique_dendrite_labels != 0]
+    # 1. label connected components
+    labels_cp, num_detected = cp_ndimage.label(dend_cp, structure=struct)
 
-    dendrite_lengths = {label: 0 for label in unique_dendrite_labels}
-    # Find unique labels present in the skeleton
-    unique_labels_in_skeleton = np.unique(labeled_skeletons)
-    unique_labels_in_skeleton = unique_labels_in_skeleton[unique_labels_in_skeleton != 0]
-    #logger.info(f"Found {len(unique_labels_in_skeleton)} unique dendrite labels in skeleton.")
+    # 2. compute volumes (voxel counts) of each component
+    idx = cp.arange(1, num_detected + 1, dtype=cp.int32)
+    dend_vols_cp = cp_ndimage.sum(dend_cp, labels_cp, index=idx)
 
-    # Calculate lengths only for labels present in the skeleton
-    lengths = ndimage.sum(np.ones_like(labeled_skeletons), labeled_skeletons, index=unique_labels_in_skeleton)
+    # 3. filter by minimum volume threshold
+    large_mask_cp = dend_vols_cp >= settings.min_dendrite_vol
+    keep_labels_cp = idx[large_mask_cp]              # label IDs to keep
 
-    # Update the dendrite_lengths dictionary with calculated lengths
-    for label, length in zip(unique_labels_in_skeleton, lengths):
-        dendrite_lengths[label] = length
+    # 4. create filtered binary & relabel
+    filt_binary_cp = cp.isin(labels_cp, keep_labels_cp)
+    filt_labels_cp, num_filtered = cp_ndimage.label(filt_binary_cp,
+                                                     structure=struct)
 
-    # Calculate dendrite lengths
-    #dendrite_lengths = ndimage.sum(np.ones_like(labeled_skeletons), labeled_skeletons, index=unique_dendrite_labels)
-    #dendrite_lengths = {label: 0 for label in unique_dendrite_labels}
+    # ---- back to CPU ----------------------------------------------------
+    filt_labels_np = cp.asnumpy(filt_labels_cp).astype(cp.uint16)
 
-    # Calculate dendrite volumes
-    # Step 6: Calculate dendrite volumes for all labels
-   # dendrite_volumes = ndimage.sum(labeled_dendrites > 0, labeled_dendrites, index=unique_dendrite_labels)
-    dendrite_volumes = ndimage.sum(np.ones_like(labeled_dendrites), labeled_dendrites, index=unique_dendrite_labels)
-    dendrite_volumes = dict(zip(unique_dendrite_labels, dendrite_volumes))
+    # optional: free GPU memory early
+    del dend_cp, labels_cp, dend_vols_cp, large_mask_cp, keep_labels_cp
+    del filt_binary_cp, filt_labels_cp
+    cp.cuda.Device().synchronize()
 
-    #dendrite_volumes = ndimage.sum(np.ones_like(labeled_dendrites), labeled_dendrites, index=unique_dendrite_labels)
+    logger.info(
+        f"    Processing {num_filtered} of {num_detected} detected dendrites "
+        f"larger than minimum volume threshold of {settings.min_dendrite_vol} voxels"
+    )
 
-    # Create dictionaries with labels as keys
-    #dendrite_lengths = dict(zip(unique_dendrite_labels, dendrite_lengths))
-    #dendrite_volumes = dict(zip(unique_dendrite_labels, dendrite_volumes))
-
-    return dendrite_lengths, dendrite_volumes, skeleton_coords, labeled_skeletons
-
+    return filt_labels_np
 
 def adaptive_distance_transform(image, logger, threshold_size=20 * 2000 * 2000):
     # Ensure the input is binary
@@ -2868,7 +3473,7 @@ def adaptive_distance_transform(image, logger, threshold_size=20 * 2000 * 2000):
         return ndimage.distance_transform_edt(np.invert(binary_image))
 
     scale_factor = scale_factor * 2
-    logger.info(f"    Using scale factor {round(scale_factor,1)} to reduce computation time for distance calculation.")
+    logger.info(f"    Using scale factor {round(scale_factor,1)} to reduce computation time for adaptive distance calculation.")
     # Calculate new shape
     new_shape = tuple(int(s / scale_factor) for s in binary_image.shape)
 
@@ -2897,534 +3502,49 @@ def adaptive_distance_transform(image, logger, threshold_size=20 * 2000 * 2000):
     return large_distance
 
 
-def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings, locations, filename, log, logger):
 
-    time_initial = time.time()
 
-    #log_memory_usage(logger)
-
-    neuron = image[:,settings.neuron_channel-1,:,:]
-
-
-
-    if neuron.size > 1e8:
-        logger.info(f"   The neuron channel for this image is ~{neuron.size / 1e9:.2f} GB in size. This may take considerable time to process.")
-        logger.info(f"   Based on previous experiments it may take ~{round(neuron.size * 2.5e-8,0)} minutes, if sufficient resources are available.")
-
-        # temp size limits
-    if neuron.size > 1e9:
-        logger.info(
-            f"    *Note, as the dataset is over 1GB, full 3D validation data export has been disabled (as these volumes can be 20x raw input)."
-            f"\n    To generate 3D validation datasets, please isolate specific regions of the dataset and process separately.")
-        logger.info(
-            f"    Due to the size of this image volume, neck generation features are currently unavailable.")
-        settings.neck_analysis = False
-        #settings.mesh_analysis = True
-        settings.save_val_data = False
-    else:
-        settings.neck_analysis = False
-        settings.mesh_analysis = True
-
-    if settings.model_type == 1:
-        spines = (labels_vol == 1)
-        dendrites = (labels_vol == 2)
-        soma = (labels_vol==3)
-    elif settings.model_type == 2:
-        dendrites = (labels_vol == 1)
-        soma = (labels_vol==2)
-        spines = (labels_vol == 10) # create an empty volume for spines
-    elif settings.model_type == 3:
-        spines = (labels_vol == 1)
-        dendrites = (labels_vol == 2)
-        soma = (labels_vol==3)
-        necks = (labels_vol == 4)
-
-    #filter dendrites
-    logger.info("   Filtering dendrites...")
-    labeled_dendrites = filter_dendrites(dendrites, settings, logger)
-    if np.max(labeled_dendrites) > 0:
-
-        if np.max(soma) == 0:
-            #label and filter soma
-            soma_distance = soma
-        else:
-            logger.info("   Calculating soma distance...")
-            #soma_distance = ndimage.distance_transform_edt(np.invert(soma))
-            soma_distance = adaptive_distance_transform(soma, logger)
-
-        #logger.info(f"   Processing {np.max(filt_dendrites)} dendrites...")
-        #Create Distance Map
-        logger.info("   Calculating distances from dendrites...")
-        #dendrite_distance = ndimage.distance_transform_edt(np.invert(labeled_dendrites > 0)) #invert neuron mask to get outside distance
-        dendrite_distance = adaptive_distance_transform(labeled_dendrites > 0, logger)
-        logger.info("   Calculating dendrite skeleton...")
-        dendrites_mask = (labeled_dendrites > 0).astype(np.uint8) #changed from dendrites
-        skeleton = morphology.skeletonize(dendrites_mask)
-
-
-
-        #if settings.save_val_data == True:
-        #    save_3D_tif(neuron_distance.astype(np.uint16), locations.validation_dir+"/Neuron_Mask_Distance_3D"+file, settings)
-
-        #Create Neuron MIP for validation - include distance map too
-        #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+files[file], 'float', settings)
-        #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, neuron_mask, soma_mask, soma_distance, skeleton, neuron_distance, density_image], locations.analyzed_images+"/Neuron/Neuron_MIP_"+file, 'float', settings)
-        logger.info(f"    Time taken for initial processing: {time.time() - time_initial:.2f} seconds\n")
-        #Spine Detection
-        logger.info("   Analyzing spines...")
-        model_options = ["Spines, Dendrites, and Soma", "Dendrites and Soma Only", "Necks, Spines, Dendrites, and Soma"]
-        logger.info(f"    Using model type {model_options[settings.model_type - 1]}")
-        spine_labels = spine_detection(spines, settings.erode_shape, settings.remove_touching_boarders, logger) #binary image, erosion value (0 for no erosion)
-
-
-
-        # now we have spine_labels and connected_necks for all spines for futher processing and measurements
-
-        #logger.info(f" {np.max(spine_labels)}.")
-        #max_label = np.max(spine_labels)
-
-        #Measurements
-        #Create 4D Labels
-        #imwrite(locations.tables + 'Detected_spines.tif', spine_labels.astype(np.uint16), imagej=True, photometric='minisblack',
-        #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})
-        time_spine = time.time()
-
-        #spine_table, spines_filtered = spine_measurementsV2(image, spine_labels, 1, 0, settings.neuron_channel, dendrite_distance, soma_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
-
-        spine_table, spines_filtered = initial_spine_measurements(image, spine_labels, 1, 0, settings.neuron_channel,
-                                                            dendrite_distance,
-                                                            settings.neuron_spine_size, settings.neuron_spine_dist,
-                                                            settings, locations, filename, logger)
-
-        logger.info(f"     Time taken for initial spine detection: {time.time() - time_spine:.2f} seconds")
-        #spine_table, spines_filtered = spine_measurementsV1(image, spine_labels, settings.neuron_channel, dendrite_distance, soma_distance, settings.neuron_spine_size, settings.neuron_spine_dist, settings, locations, filename, logger)
-
-        #Create 4D Labels
-        #imwrite(locations.tables + 'Detected_spines_filtered.tif', spines_filtered.astype(np.uint16), imagej=True, photometric='minisblack',
-        #        metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZYX'})                                                  #soma_mask, soma_distance, )
-
-
-
-
-        logger.info("\n    Calculating spine necks...")
-        time_neck_connection = time.time()
-
-        #disable neck analysis for very large datasets
-        if settings.neck_analysis == False:
-            logger.info(f"     Image shape is {spines_filtered.shape}. Neck analysis has been disabled.")
-            connected_necks = np.zeros_like(spines_filtered)
-        else:
-            if settings.model_type == 3:
-                neck_labels = measure.label(necks)
-
-                # associate spines with necks
-                logger.info("     Associating spines with necks...")
-                neck_labels_updated = associate_spines_with_necks_gpu(spines_filtered, neck_labels, logger)
-                #save this as a tif
-                #imwrite(locations.Vols + 'Detected_necks.tif', neck_labels_updated.astype(np.uint16), imagej=True,
-                 #           photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
-
-                # unassociated neck voxels
-                remaining_necks = (neck_labels) & (neck_labels_updated == 0)
-
-                #imwrite(locations.Vols + 'remaining_necks.tif', remaining_necks.astype(np.uint16), imagej=True,
-                #        photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
-                # extend spines with necks to dendrite
-                # background = label == 0
-                #traversable_for_necks = remaining_necks | labels == 0
-                # = (remaining_necks + dendrites) == 0
-                target = (dendrites_mask + (remaining_necks > 0)) - neck_labels_updated >0
-
-
-                #Extend connected necks to neck on dendrite or directly to dendrite
-                #currently can have paths crossing existing labels - need ensure these paths go around existing labels
-                #
-                logger.info("     Extending necks to dendrites...")
-                extended_necks = extend_objects_GPU(neck_labels_updated, target, neuron, settings, locations,
-                                   logger)
-                extended_necks = np.where(neck_labels_updated == 0, extended_necks, 0)
-                #imwrite(locations.Vols + 'extended_necks.tif', extended_necks.astype(np.uint16), imagej=True,
-                #        photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
-
-                # associate extended_necks with  remaining_necks
-                logger.info("     Associating extended necks with remaining necks...")
-                connected_necks = associate_spines_with_necks_gpu((extended_necks+neck_labels_updated), remaining_necks, logger)
-
-                connected_necks = connected_necks - spines_filtered
-                connected_necks = np.where(dendrites_mask == 0, connected_necks,  0)
-                #imwrite(locations.Vols + 'connected_necks.tif', connected_necks.astype(np.uint16), imagej=True,
-                #        photometric='minisblack', metadata={'spacing': settings.input_resZ, 'unit': 'um', 'axes': 'ZYX'})
-
-                # extend spines without necks
-                #spines_without_necks = spine_labels.copy()
-                #spines_without_necks[extended_necks > 0] = 0  # Remove spines that have necks
-
-                # Update traversable mask to include extended B objects
-                # traversable_for_necks = remaining_necks | dendrites
-                #extended_spines = extend_objects(spines_without_necks, dendrites, traversable_for_necks)
-                #extended_spines = extend_objects_GPU(spines_filtered, dendrites, neuron, settings, locations,
-                #                   logger)
-                # Combine extended A and B objects
-                #connected_necks = np.maximum(extended_spines, extended_necks)
-
-            else:
-                #traversable_for_necks = dendrites == 0
-                logger.info("     Extending spines to dendrites...")
-                connected_necks = extend_objects_GPU(spines_filtered, dendrites_mask, neuron, settings, locations,
-                                                     logger)
-
-        # time for neck connection
-        logger.info(f"     Time taken for neck generation: {time.time() - time_neck_connection:.2f} seconds")
-        #logger.info(connected_necks.shape)
-        # Remove spines that are connected to necks
-        #connected_necks[spine_labels > 0] = 0
-
-        #Second pass analysis
-        #take spines(necks and spines filtered) create subvolumes, mask with a 5 pixel dilation and pass through the 2nd pass model
-        if settings.second_pass:
-            logger.info("     Running spine refinement...")
-            if settings.refinement_model_path != None:
-                spines_filtered, connected_necks =  second_pass_annotation(spines_filtered, connected_necks, dendrites_mask, neuron,
-                                                                   locations, settings, logger)
-            else:
-                logger.info("Spine refinement model not found. Skipping second pass annotation. Please update location of second pass model in settings file to enable second pass annotation.")
-
-        #log_memory_usage(logger)
-
-
-        #calulating dendrite statistics ###### CLEAN UP WHOLE NEURON AND KEEP DEND STATS
-        #logger.info("\n    Calculating dendrite statistics...")
-        #originally whole neuron stats but now calculating dendrite specific
-
-        logger.info("     Calculating neuron statistics...")
-        neuron_length = np.sum(skeleton == 1)
-        neuron_volume = np.sum(dendrites_mask ==1)
-
-        del dendrites_mask
-
-        logger.info("     Calculating dendrite statistics...")
-        #get dendrite lengths and volumes as dictoinaries
-        dendrite_lengths, dendrite_volumes, skeleton_coords, labeled_skeletons = calculate_dendrite_length_and_volume_fast(labeled_dendrites, skeleton, logger)
-
-
-
-        #finished calculating dendrite statistics
-        logger.info("      Complete.")
-
-        logger.info("     Calculating spine dendrite ID and geodesic distance...")
-        if np.max(soma) == 0:
-            spine_dendID_and_geodist = calculate_dend_ID_and_geo_distance(labeled_dendrites, spines_filtered, skeleton_coords, labeled_skeletons,
-                                             filename, locations, soma_vol=None)
-        else:
-            spine_dendID_and_geodist = calculate_dend_ID_and_geo_distance(labeled_dendrites, spines_filtered,
-                                                                          skeleton_coords, labeled_skeletons,
-                                                                          filename, locations, soma_vol=soma)
-
-        #save spine dendrite ID and geodesic distance as csv using pands
-        spine_dendID_and_geodist.to_csv(locations.tables + 'Detected_spines_dendrite_ID_and_geodesic_distance_' + filename + '.csv', index=False)
-
-        logger.info("      Complete.")
-
-        #analyze whole spines
-        logger.info("\n     Analyzing spines using mesh generation in batches on GPU...")
-
-        #combine connected_necks and Spines_filtered
-        #print max id for spines fileterd and connected_necks
-        if settings.additional_logging:
-            logger.info(f"Max ID for spines filtered is {np.max(spines_filtered)}")
-            logger.info(f"Max ID for connected necks is {np.max(connected_necks)}")
-
-
-        if settings.mesh_analysis == True:
-            spine_mesh_results = analyze_spines_batch(((connected_necks*~(spines_filtered>0))+spines_filtered), spines_filtered, labeled_dendrites, neuron, locations, settings, logger, [settings.input_resZ,  settings.input_resXY,  settings.input_resXY])
-        #spine_mesh_results.to_csv(locations.tables + 'Detected_spines_mesh_measurements_' + filename + '.csv', index=False)
-
-        #analyze spine necks
-        #logger.info("      Analyzing spine necks...")
-        #neck_results = analyze_spine_necks_batch(connected_necks, logger, [settings.input_resZ,  settings.input_resXY,  settings.input_resXY])
-        #neck_results.to_csv(locations.tables + 'Detected_necks_mesh_measurements_' + filename + '.csv', index=False)
-
-
-        if len(spine_table) == 0:
-            logger.info(f"  *No spines were analyzed for this image")
-
-        else:
-
-            logger.info("    Saving validation MIP image...")
-            neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, spines_filtered, connected_necks, labeled_dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+filename, 'float', settings)
-
-            if settings.save_val_data == True:
-                logger.info("    Saving validation volume image...")
-                create_and_save_multichannel_tiff([neuron, spines, spines_filtered, connected_necks, labeled_dendrites, skeleton, dendrite_distance], locations.Vols+filename, 'float', settings)
-
-            del neuron, spines, labeled_dendrites, skeleton
-            gc.collect()
-            #logger.info("\n   Creating spine arrays on GPU...")
-            #Extract MIPs for each spine
-
-            #spine_MIPs, spine_slices, spine_vols = create_spine_arrays_in_blocks(image, labels_vol, spines_filtered, spine_table, settings.roi_volume_size, settings, locations, filename,  logger, settings.GPU_block_size)
-
-
-            ##### We now have refined labels for all spines - so we should remeasure intensities and any voxel measurements
-
-            #perform final vox based measurements on spines for morophology and intensity
-            logger.info("\n    Calculating final measurements...")
-            logger.info("     Calculating final spine head measurements...")
-            spine_head_table, spines_filtered = spine_vox_measurements(image, spines_filtered, 1, 0,
-                                                                       settings.neuron_channel, 'head',
-                                                                dendrite_distance, soma_distance,
-                                                                settings.neuron_spine_size, settings.neuron_spine_dist,
-                                                                settings, locations, filename, logger)
-
-            logger.info("     Calculating final neck measurements...")
-            #now measure in necks (what about if neck label doesn't exist (ensure has value 0)
-            neck_table, spines_filtered = spine_vox_measurements(image, connected_necks, 1, 0,
-                                                                       settings.neuron_channel, 'neck',
-                                                                       dendrite_distance, soma_distance,
-                                                                       settings.neuron_spine_size,
-                                                                       settings.neuron_spine_dist,
-                                                                       settings, locations, filename, logger)
-
-            #merge
-            del connected_necks, dendrite_distance, soma_distance, spines_filtered
-            gc.collect()
-
-            #multiply geodesic_distance by settings.input_resXY to get in microns
-            spine_dendID_and_geodist['geodesic_dist'] = spine_dendID_and_geodist['geodesic_dist'] * settings.input_resXY
-
-            spine_table = merge_spine_measurements(spine_table, spine_dendID_and_geodist, settings, logger)
-
-            spine_table = merge_spine_measurements(spine_table, spine_head_table, settings, logger)
-            spine_table = merge_spine_measurements(spine_table, neck_table, settings, logger)
-
-            if settings.mesh_analysis == True:
-            #drop 'start_coords' from spine_mesh_results
-                spine_mesh_results.drop(['start_coords'], axis=1, inplace=True)
-
-                if settings.additional_logging:
-                    pd.set_option('display.max_columns', None)
-                    logger.info(spine_table.columns)
-                    logger.info(spine_mesh_results.columns)
-                    logger.info(spine_table.head())
-                    logger.info(spine_mesh_results.head())
-
-            #save these dfs as csvs
-            #spine_table.to_csv(locations.tables + 'Detected_spines_vox_measurements_' + filename + '.csv', index=False)
-            #spine_mesh_results.to_csv(locations.tables + 'Detected_spines_mesh_measurements_' + filename + '.csv', index=False)
-
-                spine_table = merge_spine_measurements(spine_table, spine_mesh_results, settings, logger)
-
-
-
-
-            logger.info("     Calculating final complete spine measurements...")
-            spine_table.insert(4, f'spine_vol',
-                              spine_table['head_vol'] + spine_table['neck_vol'])
-            spine_table.insert(9, f'spine_C1_int_density',
-                               spine_table['head_C1_int_density'] + spine_table['neck_C1_int_density'])
-            spine_table.insert(10, f'spine_C1_max_int', np.maximum(spine_table['head_C1_max_int'], spine_table['neck_C1_max_int']))
-            spine_table.insert(11, f'spine_C1_mean_int', spine_table['spine_C1_int_density']/ spine_table['spine_vol'])
-
-            spine_table = move_column(spine_table, 'neck_vol', 6)
-
-            if settings.mesh_analysis == True:
-                #adjust columns for mesh data
-                spine_table = move_column(spine_table, 'dendrite_id', 4)
-
-                spine_table = move_column(spine_table, 'spine_area', 4)
-                spine_table = move_column(spine_table, 'spine_vol', 5)
-                spine_table = move_column(spine_table, 'spine_vol_m', 6)
-                spine_table = move_column(spine_table, 'spine_sa_m', 7)
-                spine_table = move_column(spine_table, 'spine_length', 8)
-
-                spine_table = move_column(spine_table, 'head_area', 9)
-                spine_table = move_column(spine_table, 'head_vol', 10)
-                spine_table = move_column(spine_table, 'head_vol_m', 11)
-                spine_table = move_column(spine_table, 'head_sa_m', 12)
-                spine_table = move_column(spine_table, 'head_length', 13)
-                spine_table = move_column(spine_table, 'head_width_mean_m', 14)
-                spine_table = move_column(spine_table, 'neck_area', 15)
-                spine_table = move_column(spine_table, 'neck_vol', 16)
-                spine_table = move_column(spine_table, 'neck_vol_m', 17)
-                spine_table = move_column(spine_table, 'neck_sa_m', 18)
-                spine_table = move_column(spine_table, 'neck_length', 19)
-                spine_table = move_column(spine_table, 'neck_width_mean_m', 20)
-                spine_table = move_column(spine_table, 'neck_width_min_m', 21)
-                spine_table = move_column(spine_table, 'neck_width_max_m', 22)
-                spine_table = move_column(spine_table, 'dendrite_id', 4)
-                spine_table = move_column(spine_table, 'geodesic_dist', 5)
-
-            # Loop for C2 to C5 measurements
-            for i in range(2, 6):
-                c_label = f'C{i}'
-                head_col = f'head_{c_label}_mean_int'
-                neck_col = f'neck_{c_label}_mean_int'
-
-                if head_col in spine_table.columns and neck_col in spine_table.columns:
-                    #logger.info(f"    Creating columns for {c_label} measurements...")
-
-                    # Calculate integrated density
-                    spine_table.insert(len(spine_table.columns), f'spine_{c_label}_int_density',
-                                       spine_table[f'head_{c_label}_int_density'] + spine_table[
-                                           f'neck_{c_label}_int_density'])
-
-                    # Calculate max intensity
-                    spine_table.insert(len(spine_table.columns),  f'spine_{c_label}_max_int',
-                                       np.maximum(spine_table[f'head_{c_label}_max_int'],  spine_table[f'neck_{c_label}_max_int']))
-                    #spine_table.insert(len(spine_table.columns), f'spine_{c_label}_max_int',
-                     #                  spine_table[[f'head_{c_label}_max_int', f'neck_{c_label}_max_int']].np.maximum(axis=1))
-
-                    # Calculate mean intensity
-                    spine_table.insert(len(spine_table.columns), f'spine_{c_label}_mean_int',
-                                       spine_table[f'spine_{c_label}_int_density'] / spine_table['spine_vol'])
-
-                    #logger.info(f"    Columns for {c_label} measurements created successfully.")
-
-            '''
-            #use the spine_MIPs to measure spine head area - move this to the mesh section to get areas for neck head and spine
-            label_areas = spine_MIPs[:, 1, :, :]
-            spine_areas = np.sum(label_areas > 0, axis=(1, 2))
-            spine_masks = label_areas > 0
-            spine_ids = np.nan_to_num(np.sum(label_areas * spine_masks, axis=(1, 2)) / np.sum(spine_masks, axis=(1, 2), where=spine_masks))
-
-            df_spine_areas = pd.DataFrame({'head_area_v': spine_areas})
-            df_spine_areas['label'] = spine_ids
-            
-            spine_table = spine_table.merge(df_spine_areas, on='label', how='left')
-            spine_table.insert(5, 'head_area', spine_table['head_area_v'] * (settings.input_resXY **2))
-            spine_table.drop(['head_area_v'], axis=1, inplace=True)
-            '''
-
-
-            #df_spine_areas['label'] = spine_table['label'].values
-            # Reindex df_spine_areas to match the index of spine_table
-            #df_spine_areas_reindex = df_spine_areas.reindex(spine_table.index)
-            #df_spine_areas_reindex.to_csv(locations.tables + 'Detected_spines_'+filename+'reindex.csv',index=False) 
-            #spine_table.insert(5, 'spine_area', spine_table.pop('spine_area')) #pops and inserts
-            #spine_table.insert(5, 'spine_area', df_spine_areas['spine_area'])
-
-
-
-
-
-
-            #spine_table.drop(['dendrite_id'], axis=1, inplace=True)
-            #update label column to id
-            spine_table.rename(columns={'label': 'spine_id'}, inplace=True)
-
-            #drop some metrics that need furth optimization width measuremnts
-            drop_columns = ['head_width_mean_m', 'neck_width_mean_m', 'neck_width_min_m', 'neck_width_max_m']
-            spine_table.drop(columns=drop_columns, inplace=True, errors='ignore')
-
-
-            spine_table.to_csv(locations.tables + filename+'_detected_spines.csv',index=False)
-
-
-            create_spine_summary_dendrite(spine_table, filename, dendrite_lengths, dendrite_volumes, settings, locations)
-
-            #create summary
-            summary = create_spine_summary_neuron(spine_table, filename, neuron_length, neuron_volume, settings)
-
-            # Append to the overall summary DataFrame
-            spine_summary = pd.concat([spine_summary, summary], ignore_index=True)
-    else:
-        logger.info("  *No dendrites were analyzed for this image.")
-    logger.info("     Complete.\n")
-    logger.info(f" Processing complete for file {filename}\n---")
-
-    return spine_summary
-
-
-def merge_spine_measurements(df1, df2, settings, logger):
-    try:
-        if settings.additional_logging:
-            logger.info("Initial DataFrame info:")
-            print_df_info_merge(df1, "df1", logger)
-            print_df_info_merge(df2, "df2", logger)
-
-        # Ensure 'label' is a column in both DataFrames
-        if 'label' not in df1.columns:
-            df1 = df1.reset_index()
-        if 'label' not in df2.columns:
-            df2 = df2.reset_index()
-
-        # Convert 'label' to string in both DataFrames
-        df1['label'] = df1['label'].astype(str)
-        df2['label'] = df2['label'].astype(str)
-
-        # Convert any numpy arrays to lists
-        df1 = df1.applymap(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
-        df2 = df2.applymap(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
-
-        # Merge the DataFrames on the 'label' column
-        merged_df = pd.merge(df1, df2, on='label', how='outer', suffixes=('_1', '_2'))
-
-        if settings.additional_logging:
-            logger.info("Merged DataFrame info:")
-            print_df_info_merge(merged_df, "merged_df", logger)
-
-        # Combine columns with _1 and _2 suffixes
-        for col in merged_df.columns:
-            if col.endswith('_1'):
-                base_col = col[:-2]
-                col_2 = base_col + '_2'
-                if col_2 in merged_df.columns:
-                    merged_df[base_col] = merged_df[col].combine_first(merged_df[col_2])
-                    merged_df = merged_df.drop(columns=[col, col_2])
-                else:
-                    merged_df = merged_df.rename(columns={col: base_col})
-            elif col.endswith('_2') and col[:-2] not in merged_df.columns:
-                merged_df = merged_df.rename(columns={col: col[:-2]})
-
-        # Fill NaN values with 0
-        merged_df = merged_df.fillna(0)
-
-        # Convert 'label' back to int if possible
-        try:
-            merged_df['label'] = merged_df['label'].astype(int)
-        except ValueError:
-            logger.warning("Could not convert 'label' back to int. Keeping as string.")
-
-        if settings.additional_logging:
-            logger.info("Final merged DataFrame info:")
-            print_df_info_merge(merged_df, "final_merged_df", logger)
-
-        return merged_df
-
-    except Exception as e:
-        logger.error(f"An error occurred in merge_spine_measurements: {str(e)}")
-        logger.info("Printing additional information about the DataFrames:")
-        print_df_info_merge(df1, "df1", logger)
-        print_df_info_merge(df2, "df2", logger)
-        raise  # Re-raise the exception after printing debug info
-
-
-def print_df_info(df, name):
-    print(f"DataFrame {name} info:")
-    print(df.info())
-    print("\nFirst few rows:")
-    print(df.head())
-    print("\nColumn types:")
-    print(df.dtypes)
-    print("\nAny columns with object dtype:")
-    object_cols = df.select_dtypes(include=['object']).columns
-    for col in object_cols:
-        print(f"Column '{col}' unique values:")
-        print(df[col].unique())
-    print("\n")
-
-def print_df_info_merge(df, name, logger):
-    logger.info(f"Info for {name}:")
-    logger.info(f"Shape: {df.shape}")
-    logger.info("Columns:")
-    for col in df.columns:
-        logger.info(f"  {col}: {df[col].dtype}")
-    logger.info(f"Index: {df.index}")
-    logger.info(f"Index type: {type(df.index)}")
-    logger.info("First few rows:")
-    logger.info(df.head())
-    logger.info("\n")
-
+def categorize_spine(L, dH, dN, 
+                     big_ratio=2.0,   # threshold for ">>"
+                     gt_ratio=1.2,    # threshold for ">"
+                     eq_tolerance=0.2 # threshold for "~=" around 1:1
+                    ):
+    """
+    Categorize a spine based on L, dH, dN, using approximate numeric thresholds
+    for '>>', '>', and '~='.
+
+    Returns a string representing the spine category.
+    """
+    def roughly_equal(a, b, tol=eq_tolerance):
+        # Check if a and b are 'close' in ratio, i.e. a/b in [1 - tol, 1 + tol]
+        ratio = a / b if b != 0 else np.inf
+        return (1 - tol <= ratio <= 1 + tol)
+
+    # Avoid division by zero
+    L  = max(L, 1e-9)
+    dH = max(dH, 1e-9)
+    dN = max(dN, 1e-9)
+
+    L_dH  = L / dH
+    dH_dN = dH / dN
+    
+    # 1) filopodia:   L >> dH ~= dN
+    if (L_dH > big_ratio) and roughly_equal(dH, dN):
+        return "filopodia"
+    # 2) long thin:   L >> dH > dN
+    elif (L_dH > big_ratio) and (dH_dN > gt_ratio):
+        return "spine"
+    # 3) thin:        L > dH > dN
+    elif (L_dH > gt_ratio) and (dH_dN > gt_ratio):
+        return "spine"
+    # 4) stubby:      L ~= dH ~= dN
+    elif roughly_equal(L, dH) and roughly_equal(dH, dN):
+        return "spine"
+    # 5) mushroom:    dH >> dN
+    elif dH_dN > big_ratio:
+        return "spine"
+    # Otherwise
+    return "spine"
 
 def create_kdtree_from_skeleton(skeleton_coords, skeleton_labels, sampling_method='systematic', sampling_param=4):
 
@@ -3495,6 +3615,20 @@ def match_and_relabel_objects_geo(tree_A, labels_A, image_B, max_distance=None):
 
     # Extract properties of labeled regions in image_B
     props_B = measure.regionprops(image_B)
+
+    if len(props_B) == 0:
+        print("Warning: No labeled regions found in image_B")
+        # Create empty structures with the correct shape/type
+        empty_relabeled = np.zeros_like(image_B)
+        empty_labels = np.array([], dtype=np.int32)
+        empty_dict = {}
+        empty_indices = np.array([], dtype=np.int32)
+        empty_distances = np.array([], dtype=np.float64)
+        empty_df = pd.DataFrame(columns=['label', 'dendrite_id'])
+        
+        return (empty_relabeled, empty_labels, empty_dict, 
+                empty_indices, empty_distances, empty_df)
+    
 
     # Extract centroids and labels from props_B
     centroids_B = np.array([prop.centroid for prop in props_B])
@@ -3595,213 +3729,6 @@ def compute_geodesic_distance_map(object_mask, starting_points):
                         distance_map[neighbor] = current_distance + 1
                         queue.append(neighbor)
     return distance_map
-
-
-def calculate_dend_ID_and_geo_distance(labeled_dendrites, labeled_spines, skeleton_coords, skeleton_labels, filename, locations,
-                                       soma_vol=None):
-    try:
-
-        # track time of function
-        t0 = time.time()
-        print("Creating KDTree from skeletonized dendrites...")
-        sampling_method = 'systematic'
-        sampling_param = 4
-        dendrite_tree, skeleton_labels = create_kdtree_from_skeleton(
-            skeleton_coords, skeleton_labels, sampling_method=sampling_method, sampling_param=sampling_param)
-        t1 = time.time()
-        print(f"Time taken: {t1 - t0:.2f} s")
-
-        print("Matching and relabeling objects...")
-        t0 = time.time()
-
-        relabeled_spines, spine_labels_1D, spine_labels_dict, indices, distances, dend_IDs = match_and_relabel_objects_geo(
-            dendrite_tree, skeleton_labels, labeled_spines)
-        t1 = time.time()
-        print(f"Time taken: {t1 - t0:.2f} s")
-
-        mapping_dend_to_spine_data = defaultdict(list)
-        for i in range(len(spine_labels_1D)):
-            spine = spine_labels_1D[i]
-            dist = spine_labels_dict.get(spine, 0)
-            if dist != 0:
-                index_in_A = indices[i]
-                coord_in_A = dendrite_tree.data[index_in_A]
-                mapping_dend_to_spine_data[dist].append({
-                    'label_B': spine,
-                    'index_in_A': index_in_A,
-                    'coord_in_A': coord_in_A,
-                    'distance': distances[i],
-                })
-
-        # Initialize an array to accumulate geodesic distances
-        geodesic_distance_image = np.full(labeled_dendrites.shape, np.nan, dtype=np.float32)
-
-        print("geodesic distance")
-        t0 = time.time()
-        # Compute geodesic distances
-        geodesic_distances_B = {}
-        for dendrite, data_list in mapping_dend_to_spine_data.items():
-            # Get the mask of object label_A in image_A
-            dendrite_mask = (labeled_dendrites == dendrite)
-
-            # Determine starting points
-            if soma_vol is not None:
-                # Find the point(s) in object A closest to an object in image_C
-                object_coords = np.argwhere(dendrite_mask)
-                c_coords = np.argwhere(soma_vol)
-                if c_coords.size > 0:
-                    from scipy.spatial import cKDTree
-                    tree_C = cKDTree(c_coords)
-                    distances_to_C, indices_C = tree_C.query(object_coords)
-                    min_index = np.argmin(distances_to_C)
-                    starting_point = tuple(object_coords[min_index])
-                else:
-                    # Fallback to top-left voxel
-                    starting_point = tuple(object_coords[np.argmin(np.sum(object_coords, axis=1))])
-            else:
-                # Use the top-left voxel
-                object_coords = np.argwhere(dendrite_mask)
-                starting_point = tuple(object_coords[np.argmin(np.sum(object_coords, axis=1))])
-            t1 = time.time()
-            print(f"Time taken: {t1 - t0:.2f} s")
-
-            print(f"Computing geodesic distance map for dendrite {dendrite}...")
-            t0 = time.time()
-            # Compute geodesic distance map
-            distance_map = compute_geodesic_distance_map(dendrite_mask, [starting_point])
-            t1 = time.time()
-            print(f"Time taken: {t1 - t0:.2f} s")
-
-            print(f"Accumulating geodesic distances for dendrite {dendrite}...")
-            t0 = time.time()
-            # Accumulate the geodesic distances into the image
-            geodesic_distance_image[dendrite_mask] = distance_map[dendrite_mask]
-
-            # For each data in data_list
-            for data in data_list:
-                label_B = data['label_B']
-                coord_in_A = np.round(data['coord_in_A']).astype(int)
-                coord_in_A = tuple(coord_in_A)
-                geodesic_distance = distance_map[coord_in_A]
-                geodesic_distances_B[label_B] = geodesic_distance
-
-            t1 = time.time()
-            print(f"Time taken: {t1 - t0:.2f} s")
-
-        for label_B, distance in geodesic_distances_B.items():
-            dend_IDs.loc[dend_IDs['label'] == label_B, 'geodesic_dist'] = distance
-
-        #print(f"Saving relabeled image to {output_path}...")
-        #save_labeled_tiff(relabeled_spines, output_path)
-
-        # Save the geodesic distance image
-        #geodesic_distance_image_path = os.path.splitext(output_path)[0] + '_geodesic_distances.tif'
-        #print(f"Saving geodesic distance image to {geodesic_distance_image_path}...")
-        # Replace NaNs with zeros or a large number for visualization
-        geodesic_distance_image = np.nan_to_num(geodesic_distance_image, nan=0).astype(np.float32)
-        #create mip of geodesic distance image
-        geodesic_distance_image = np.max(geodesic_distance_image, axis=0)
-
-        #geodesic_distance_image = geodesic_distance_image.astype(np.float32)
-        # Save the geodesic distance image
-        imwrite(locations.MIPs+filename+'_geodesic_dist.tif', geodesic_distance_image, compression=('zlib', 1))
-
-       #geodesic_csv_path = os.path.splitext(output_path)[0] + '_geodesic_distances.csv'
-        #with open(geodesic_csv_path, 'w', newline='') as csvfile:
-         #   writer = csv.writer(csvfile)
-         #   writer.writerow(['Label_B', 'Geodesic_Distance'])
-         #   for label_B, distance in geodesic_distances_B.items():
-         #       writer.writerow([label_B, distance])
-
-        print(f"Original dendrite labels: {fast_unique_count(labeled_dendrites)}")
-        print(f"Original spine labels: {fast_unique_count(labeled_spines)}")
-        print(f"Labels after relabeling: {fast_unique_count(relabeled_spines)}")
-
-        #print(f"Original file size of B: {os.path.getsize(image_B_path) / (1024 * 1024):.2f} MB")
-        #print(f"New file size: {os.path.getsize(output_path) / (1024 * 1024):.2f} MB")
-
-        return dend_IDs
-
-    except Exception as e:
-        print(f"An error occurred: {repr(e)}")
-        import traceback
-        traceback.print_exc()
-        raise
-
-
-
-def create_spine_summary_neuron(filtered_table, filename, dendrite_length, dendrite_volume, settings):
-    #create summary table
-
-    #spine_reduced = filtered_table.drop(columns=['label', 'z', 'y', 'x'])
-    updated_table = filtered_table.iloc[:, 4:]
-    #drop dendrite_id column
-    updated_table = updated_table.drop(columns=['dendrite_id', 'geodesic_dist'])
-
-
-    #spine_summary = updated_table.mean()
-    spine_summary = pd.DataFrame([updated_table.mean()])
-    #spine_summary = summary.groupby('dendrite_id').mean()
-    #spine_counts = summary.groupby('dendrite_id').size()
-
-    spine_summary = spine_summary.add_prefix('avg_')
-    #spine_summary.reset_index(inplace=True)
-    #spine_summary.index = spine_summary.index + 1
-    # update summary with additional metrics
-    spine_summary.insert(0, 'Filename', filename)  # Insert a column at the beginning
-    spine_summary.insert(1, 'res_XY', settings.input_resXY)
-    spine_summary.insert(2, 'res_Z', settings.input_resZ)
-    #spine_summary.insert(3, 'dendrite_length', dendrite_length)
-    spine_summary.insert(3, 'dendrite_length', dendrite_length * settings.input_resXY)
-    #spine_summary.insert(5, 'dendrite_vol', dendrite_volume)
-    spine_summary.insert(4, 'dendrite_vol', dendrite_volume * settings.input_resXY*settings.input_resXY*settings.input_resZ)
-    spine_summary.insert(5, 'total_spines', filtered_table.shape[0])
-    spine_summary.insert(6, 'spines_per_um', spine_summary['total_spines']/spine_summary['dendrite_length'])
-    spine_summary.insert(7, 'spines_per_um3', spine_summary['total_spines']/spine_summary['dendrite_vol'])
-
-    return spine_summary
-
-
-def create_spine_summary_dendrite(filtered_table, filename, dendrite_lengths, dendrite_volumes, settings, locations):
-    #create summary table
-
-    filtered_table = filtered_table.drop(['spine_id', 'x', 'y', 'z', 'geodesic_dist',], axis=1)
-
-    spine_counts = filtered_table.groupby('dendrite_id').size().reset_index(name='total_spines')
-
-    mean_metrics = filtered_table.groupby('dendrite_id').mean().reset_index()
-
-    spine_summary = pd.merge(mean_metrics, spine_counts, on='dendrite_id')
-
-    # update summary with additional metrics
-    spine_summary.insert(0, 'Filename', filename)  # Insert a column at the beginning
-    spine_summary.insert(1, 'res_XY', settings.input_resXY)
-    spine_summary.insert(2, 'res_Z', settings.input_resZ)
-   # spine_summary.insert(4, 'total_spines', spine_counts)
-
-    spine_summary['dendrite_length'] = spine_summary['dendrite_id'].map(dendrite_lengths)
-    spine_summary['dendrite_volume'] = spine_summary['dendrite_id'].map(dendrite_volumes)
-
-
-    spine_summary.rename(columns={'avg_dendrite_length': 'dendrite_length'}, inplace=True)
-    spine_summary.rename(columns={'avg_dendrite_vol': 'dendrite_vol'}, inplace=True)
-    spine_summary['dendrite_length'] = spine_summary['dendrite_length'] * settings.input_resXY
-    spine_summary['dendrite_volume'] = spine_summary['dendrite_volume'] *settings.input_resXY*settings.input_resXY*settings.input_resZ
-    #spine_summary = move_column(spine_summary, 'dendrite_length_um', 5)
-    #spine_summary = move_column(spine_summary, 'dendrite_vol_um3', 7)
-    spine_summary.insert(9, 'spines_per_um', spine_summary['total_spines']/spine_summary['dendrite_length'])
-    spine_summary.insert(10, 'spines_per_um3', spine_summary['total_spines']/spine_summary['dendrite_volume'])
-
-    desired_order = ['Filename', 'res_XY', 'res_Z', 'dendrite_id', 'dendrite_length', 'dendrite_volume', 'total_spines', 'spines_per_um', 'spines_per_um3'] + \
-                    [col for col in spine_summary.columns if col not in ['Filename', 'res_XY', 'res_Z', 'dendrite_id',
-                                                                         'dendrite_length', 'dendrite_volume',
-                                                                         'total_spines', 'spines_per_um',
-                                                                         'spines_per_um3']] + \
-                    []
-    spine_summary = spine_summary[desired_order]
-
-    spine_summary.to_csv(locations.tables + filename + '_dendrite_summary.csv', index=False)
-
 
 
 
@@ -3919,7 +3846,7 @@ def analyze_spines_4D(settings, locations, log, logger):
         all_spines_table = pd.DataFrame()
         all_summary_table = pd.DataFrame()
 
-    #Measurements
+            #Measurements
 
 
     for t in range(labels.shape[0]):
@@ -3981,7 +3908,7 @@ def analyze_spines_4D(settings, locations, log, logger):
 
             #all_spines_table.to_csv(locations.tables + str(t)+ 'Detected_spines_appened.csv',index=False)
 
-            summary = create_spine_summary_neuron(spine_table, str(t+1), dendrite_length, dendrite_volume, settings)
+            summary = tables.create_spine_summary_neuron(spine_table, str(t+1), dendrite_length, dendrite_volume, settings)
 
             summary.insert(7, 'new_spines', new)
             summary.insert(8, 'pruned_spines', pruned)
@@ -4012,9 +3939,9 @@ def analyze_spines_4D(settings, locations, log, logger):
 
 
     # Create MIP
-    neuron_MIP = create_mip_and_save_multichannel_tiff_4d([neuron, spines, spines_filtered_all, dendrites, skeleton, dendrite_distance], locations.input_dir+"/Registered/Registered_MIPs_4D.tif", 'float', settings)
+    neuron_MIP = io.create_mip_and_save_multichannel_tiff_4d([neuron, spines, spines_filtered_all, dendrites, skeleton, dendrite_distance], locations.input_dir+"/Registered/Registered_MIPs_4D.tif", 'float', settings)
 
-    #Create 4D Labels
+            #Create 4D Labels
     imwrite(locations.input_dir+'/Registered/Detected_spines.tif', spines_filtered_all.astype(np.uint16), compression=('zlib', 1), imagej=True, photometric='minisblack',
             metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'TZYX'})
 
@@ -4031,202 +3958,6 @@ def analyze_spines_4D(settings, locations, log, logger):
     #logger.info("Spine analysis complete.\n")
 
 
-def create_mip_and_save_multichannel_tiff(images_3d, filename, bitdepth, settings):
-    """
-    Create MIPs from a list of 3D images, merge them into a multi-channel 2D image,
-    save as a 16-bit TIFF file, and return the merged 2D multi-channel image.
-
-    Args:
-        images_3d (list of numpy.ndarray): List of 3D numpy arrays representing input images.
-        filename (str): Filename for the output TIFF file.
-
-    Returns:
-        numpy.ndarray: Merged 2D multi-channel image as a numpy array.
-    """
-    # Create MIPs from the 3D images
-    mips = [np.amax(img, axis=0) for img in images_3d]
-
-    # Convert the MIPs to a single multichannel image
-    multichannel_image = np.stack(mips, axis=0)
-
-    # Convert the multichannel image to 16-bit
-    multichannel_image = multichannel_image.astype(np.uint16)
-    #multichannel_image = rescale_all_channels_to_full_range(multichannel_image)
-
-    # Save the multichannel image as a 16-bit TIFF file
-    #imwrite(filename, multichannel_image, photometric='minisblack')
-
-    imwrite(filename, multichannel_image, compression=('zlib', 1), imagej=True, photometric='minisblack',
-            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'CYX'})
-
-    # Return the merged 2D multi-channel image as a numpy array
-    return multichannel_image
-
-def create_and_save_multichannel_tiff(images_3d, filename, bitdepth, settings):
-    """
-    Create TIF from a list of 3D images, merge them into a image,
-    save as a 16-bit TIFF file.
-
-    Args:
-        images_3d (list of numpy.ndarray): List of 3D numpy arrays representing input images.
-        filename (str): Filename for the output TIFF file.
-
-    Returns:
-        none
-    """
-
-    # Convert the list of images to a single multichannel image
-    multichannel_image = np.stack(images_3d, axis=1)
-
-    # Convert the multichannel image to 16-bit
-    multichannel_image = multichannel_image.astype(np.uint16)
-
-    imwrite(filename, multichannel_image, compression=('zlib', 1), imagej=True, photometric='minisblack',
-            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'ZCYX'})
-
-
-def create_mip_and_save_multichannel_tiff_4d(images_3d, filename, bitdepth, settings):
-    """
-    Create MIPs from a list of 3D images, merge them into a multi-channel 2D image,
-    save as a 16-bit TIFF file, and return the merged 2D multi-channel image.
-
-    Args:
-        images_3d (list of numpy.ndarray): List of 3D numpy arrays representing input images.
-        filename (str): Filename for the output TIFF file.
-
-    Returns:
-        numpy.ndarray: Merged 2D multi-channel image as a numpy array.
-    """
-    # Create MIPs from the 3D images
-    mips = [np.amax(img, axis=1) for img in images_3d]
-
-    # Convert the MIPs to a single multichannel image
-    multichannel_image = np.stack(mips, axis=0)
-    multichannel_image = np.swapaxes(multichannel_image, 0, 1)
-
-    # Convert the multichannel image to 16-bit
-    multichannel_image = multichannel_image.astype(np.uint16)
-    #multichannel_image = rescale_all_channels_to_full_range(multichannel_image)
-
-    # Save the multichannel image as a 16-bit TIFF file
-    #imwrite(filename, multichannel_image, photometric='minisblack')
-
-    imwrite(filename, multichannel_image, compression=('zlib', 1), imagej=True, photometric='minisblack',
-            metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'TCYX'})
-
-    # Return the merged 2D multi-channel image as a numpy array
-    return multichannel_image
-
-def rescale_all_channels_to_full_range(array):
-    """
-    Rescale all channels in a multi-channel numpy array to use the full range of 16-bit values.
-
-    Args:
-        array (numpy.ndarray): Input multi-channel numpy array.
-
-    Returns:
-        numpy.ndarray: Rescaled multi-channel numpy array.
-    """
-    num_channels = array.shape[0]
-
-    for channel in range(num_channels):
-        # Calculate the minimum and maximum values of the current channel
-        min_val = np.min(array[channel])
-        max_val = np.max(array[channel])
-
-        # Rescale the current channel to the 16-bit range [0, 65535] using a linear transformation
-        array[channel] = (array[channel] - min_val) / (max_val - min_val) * 65535
-
-        # Convert the rescaled channel to uint16 data type
-        array[channel] = array[channel].astype(np.uint16)
-
-    return array
-
-# Detects immune cells for multiclass unet output
-def spine_detection(spines, erode, remove_borders, logger):
-    #with warnings.catch_warnings():
-    #    warnings.simplefilter("ignore")
-    #    spines_clean = morphology.remove_small_holes(spines, holes)
-
-    if erode[0] > 0:
-        #Erode
-        #element = morphology.ball(erode)
-        ellipsoidal_element = create_ellipsoidal_element(erode[0], erode[1], erode[2])
-
-        spines_eroded = ndimage.binary_erosion(spines, ellipsoidal_element)
-
-        # Distance Transform to mark centers
-        distance = ndimage.distance_transform_edt(spines_eroded)
-        seeds = ndimage.label(distance > 0.1 * distance.max())[0]
-
-        #Watershed
-        labels = segmentation.watershed(-distance, seeds, mask=spines)
-
-    else:
-        labels = measure.label(spines)
-
-    #Remove objects touching border
-    if remove_borders == True:
-        padded = np.pad(
-          labels,
-          ((1, 1), (0, 0), (0, 0)),
-          mode='constant',
-          constant_values=0,
-          )
-        labels = segmentation.clear_border(padded)[1:-1]
-
-    # add new axis for labels
-    #labels = labels[:, np.newaxis, :, :]
-
-    return labels
-
-
-def spine_detection_4d(spines, erode, remove_borders, logger):
-    #with warnings.catch_warnings():
-    #    warnings.simplefilter("ignore")
-    #    spines_clean = morphology.remove_small_holes(spines, holes)
-    if erode[0] > 0:
-
-        #Erode
-        #element = morphology.ball(erode)
-        ellipsoidal_element = create_ellipsoidal_element(erode[0], erode[1], erode[2])
-        ellipsoidal_element = ellipsoidal_element[np.newaxis, :, :, :]
-
-        spines_eroded = ndimage.binary_erosion(spines, ellipsoidal_element)
-
-        # Distance Transform to mark centers
-        distance = ndimage.distance_transform_edt(spines_eroded)
-        seeds = ndimage.label(distance > 0.1 * distance.max())[0]
-
-        #Watershed
-        labels = segmentation.watershed(-distance, seeds, mask=spines)
-
-    else:
-        labels = measure.label(spines)
-
-
-    if remove_borders == True:
-        spines_list = []
-        #Remove objects touching border
-        for t in range(labels.shape[0]):
-            labels_3d = labels[t, :, :, :]
-            padded = np.pad(
-              labels_3d,
-              ((1, 1), (0, 0), (0, 0)),
-              mode='constant',
-              constant_values=0,
-              )
-            labels_3d = segmentation.clear_border(padded)[1:-1]
-            spines_list.append(labels_3d)
-
-        labels = np.stack(spines_list, axis=0)
-    # Check if the sequence of labels is continuous
-    unique_labels = np.unique(labels)
-    if np.all(np.diff(unique_labels) == 1) != True:
-        labels = measure.label(labels > 0, background=0)
-
-    return labels
-
 def create_ellipsoidal_element(radius_z, radius_y, radius_x):
     # Create a grid of points
     z = np.arange(-radius_x, radius_x + 1)
@@ -4238,291 +3969,6 @@ def create_ellipsoidal_element(radius_z, radius_y, radius_x):
     ellipsoid = (z**2 / radius_z**2) + (y**2 / radius_y**2) + (x**2 / radius_x**2) <= 1
 
     return ellipsoid
-
-
-def move_column(df, column, position):
-    """
-    Move a column in a DataFrame to a specified position.
-    
-    Parameters:
-    - df: pandas.DataFrame.
-    - column: The name of the column to move.
-    - position: The new position (index) for the column (0-based).
-    
-    Returns:
-    - DataFrame with the column moved to the new position.
-    """
-    cols = list(df.columns)
-    cols.insert(position, cols.pop(cols.index(column)))
-    return df[cols]
-
-
-def initial_spine_measurements(image, labels, dendrite, max_label, neuron_ch, dendrite_distance, sizes, dist,
-                         settings, locations, filename, logger):
-    """ measures intensity of each channel, as well as distance to dendrite
-    """
-
-    if len(image.shape) == 3:
-        image = np.expand_dims(image, axis=1)
-
-    # Measure channel 1:
-    logger.info("    Making initial morphology and intensity measurements for channel 1...")
-    # logger.info(f" {labels.shape}, {image.shape}")
-    main_table = pd.DataFrame(
-        measure.regionprops_table(
-            labels,
-            intensity_image=image[:, 0, :, :],
-            properties=['label', 'centroid', 'area'],  # area is volume for 3D images
-        )
-    )
-    main_table.rename(columns={'centroid-0': 'z'}, inplace=True)
-    main_table.rename(columns={'centroid-1': 'y'}, inplace=True)
-    main_table.rename(columns={'centroid-2': 'x'}, inplace=True)
-    # measure distance to dendrite
-    logger.info("    Measuring distances to dendrite/s...")
-    # logger.info(f" {labels.shape}, {dendrite_distance.shape}")
-    distance_table = pd.DataFrame(
-        measure.regionprops_table(
-            labels,
-            intensity_image=dendrite_distance,
-            properties=['label', 'min_intensity', 'max_intensity'],  # area is volume for 3D images
-        )
-    )
-
-    # rename distance column
-    distance_table.rename(columns={'min_intensity': 'dist_to_dendrite'}, inplace=True)
-    distance_table.rename(columns={'max_intensity': 'spine_length'}, inplace=True)
-
-    distance_col = distance_table["dist_to_dendrite"]
-    main_table = main_table.join(distance_col)
-    distance_col = distance_table["spine_length"]
-    main_table = main_table.join(distance_col)
-
-    # filter out small objects
-    volume_min = sizes[0]  # 3
-    volume_max = sizes[1]  # 1500?
-
-    # logger.info(f" Filtering spines between size {volume_min} and {volume_max} voxels...")
-
-    # filter based on volume
-    # logger.info(f"  filtered table before area = {len(main_table)}")
-    spinebefore = len(main_table)
-
-    filtered_table = main_table[(main_table['area'] > volume_min) & (main_table['area'] < volume_max)]
-
-    logger.info(f"     Total putative spines: {spinebefore}")
-    logger.info(f"     Spines after volume filtering = {len(filtered_table)} ")
-    # logger.info(f"  filtered table after area = {len(filtered_table)}")
-
-    # filter based on distance to dendrite
-    spinebefore = len(filtered_table)
-    # logger.info(f" Filtering spines less than {dist} voxels from dendrite...")
-    # logger.info(f"  filtered table before dist = {len(filtered_table)}. and distance = {dist}")
-    filtered_table = filtered_table[(filtered_table['spine_length'] < dist)]
-    logger.info(f"     Spines after distance filtering = {len(filtered_table)} ")
-
-    if settings.Track != True:
-        # update label numbers based on offset
-        filtered_table['label'] += max_label
-        labels[labels > 0] += max_label
-        labels = create_filtered_labels_image(labels, filtered_table, logger)
-    else:
-
-        # Clean up label image to remove objects from image.
-        ids_to_keep = set(filtered_table['label'])  # Extract IDs to keep from your filtered DataFrame
-        # Create a mask
-        mask_to_keep = np.isin(labels, list(ids_to_keep))
-        # Apply the mask: set pixels not in `ids_to_keep` to 0
-        labels = np.where(mask_to_keep, labels, 0)
-
-    # update to included dendrite_id
-    filtered_table.insert(4, 'dendrite_id', dendrite)
-
-    # create vol um measurement
-    filtered_table.insert(6, 'spine_vol',
-                          filtered_table['area'] * (settings.input_resXY * settings.input_resXY * settings.input_resZ))
-    # drop filtered_table['area']
-    filtered_table = filtered_table.drop(['area'], axis=1)
-    # filtered_table.rename(columns={'area': 'spine_vol'}, inplace=True)
-
-    # create dist um cols
-
-    filtered_table = move_column(filtered_table, 'spine_length', 7)
-    # replace multiply column spine_length by settings.input_resXY
-    filtered_table['spine_length'] *= settings.input_resXY
-    # filtered_table.insert(8, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY))
-    filtered_table = move_column(filtered_table, 'dist_to_dendrite', 9)
-    filtered_table['dist_to_dendrite'] *= settings.input_resXY
-    # filtered_table.insert(10, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY))
-    #filtered_table = move_column(filtered_table, 'dist_to_soma', 11)
-    #filtered_table['dist_to_soma'] *= settings.input_resXY
-    # filtered_table.insert(12, 'dist_to_soma_um', filtered_table['dist_to_soma'] * (settings.input_resXY))
-
-    # logger.info(f"  filtered table before image filter = {len(filtered_table)}. ")
-    # logger.info(f"  image labels before filter = {np.max(labels)}.")
-    # integrated_density
-    #filtered_table['C1_int_density'] = filtered_table['spine_vol'] * filtered_table['C1_mean_int']
-
-    # measure remaining channels
-    #for ch in range(image.shape[1] - 1):
-    #    filtered_table['C' + str(ch + 2) + '_int_density'] = filtered_table['spine_vol'] * filtered_table[
-    #        'C' + str(ch + 2) + '_mean_int']
-
-    # Drop unwanted columns
-    # filtered_table = filtered_table.drop(['spine_vol','spine_length', 'dist_to_dendrite', 'dist_to_soma'], axis=1)
-    #logger.info(
-    #    f"     After filtering {len(filtered_table)} spines were analyzed from a total of {len(main_table)} putative spines")
-    #create a subset of filtered table using columns label, x, y, z
-    filtered_table_subset = filtered_table[['label', 'x', 'y', 'z']]
-
-    return filtered_table_subset, labels
-
-
-def spine_vox_measurements(image, labels, dendrite, max_label, neuron_ch, prefix, dendrite_distance, soma_distance, sizes, dist,
-                         settings, locations, filename, logger):
-    """ measures intensity of each channel, as well as distance to dendrite
-    Args:
-        labels (detected cells)
-        settings (dictionary of settings)
-
-    Returns:
-        pandas table and labeled spine image
-    """
-
-    if len(image.shape) == 3:
-        image = np.expand_dims(image, axis=1)
-
-    # Measure channel 1:
-    #logger.info("    Making final morphology and intensity measurements for channel 1...")
-    # logger.info(f" {labels.shape}, {image.shape}")
-    main_table = pd.DataFrame(
-        measure.regionprops_table(
-            labels,
-            intensity_image=image[:, 0, :, :],
-            properties=['label', 'area', 'mean_intensity', 'max_intensity'],  # area is volume for 3D images
-        )
-    )
-
-    # rename mean intensity
-    main_table.rename(columns={'mean_intensity': f'{prefix}_C1_mean_int'}, inplace=True)
-    main_table.rename(columns={'max_intensity': f'{prefix}_C1_max_int'}, inplace=True)
-    #main_table.rename(columns={'centroid-0': 'z'}, inplace=True)
-    #main_table.rename(columns={'centroid-1': 'y'}, inplace=True)
-    #main_table.rename(columns={'centroid-2': 'x'}, inplace=True)
-
-    # measure remaining channels
-    for ch in range(image.shape[1] - 1):
-        logger.info(f"    Measuring channel {ch + 2}...")
-        # Measure
-        table = pd.DataFrame(
-            measure.regionprops_table(
-                labels,
-                intensity_image=image[:, ch + 1, :, :],
-                properties=['label', 'mean_intensity', 'max_intensity'],  # area is volume for 3D images
-            )
-        )
-
-        # rename mean intensity
-        table.rename(columns={'mean_intensity': f'{prefix}_C' + str(ch + 2) + '_mean_int'}, inplace=True)
-        table.rename(columns={'max_intensity': f'{prefix}_C' + str(ch + 2) + '_max_int'}, inplace=True)
-
-        Mean = table[f'{prefix}_C' + str(ch + 2) + '_mean_int']
-        Max = table[f'{prefix}_C' + str(ch + 2) + '_max_int']
-
-        # combine columns with main table
-        main_table = main_table.join(Mean)
-        main_table = main_table.join(Max)
-
-    if prefix == 'head':
-        # measure distance to dendrite
-        #logger.info("    Measuring distances to dendrite...")
-        # logger.info(f" {labels.shape}, {dendrite_distance.shape}")
-        distance_table = pd.DataFrame(
-            measure.regionprops_table(
-                labels,
-                intensity_image=dendrite_distance,
-                properties=['label', 'min_intensity', 'max_intensity'],  # area is volume for 3D images
-            )
-        )
-
-        # rename distance column
-        distance_table.rename(columns={'min_intensity': 'dist_to_dendrite_dm'}, inplace=True)
-        distance_table.rename(columns={'max_intensity': 'spine_length_dm'}, inplace=True)
-
-        distance_col = distance_table["dist_to_dendrite_dm"]
-        main_table = main_table.join(distance_col)
-        distance_col = distance_table["spine_length_dm"]
-        main_table = main_table.join(distance_col)
-
-        if np.max(soma_distance) > 0:
-            # measure distance to dendrite
-            logger.info("      Measuring distances to soma...")
-            distance_table = pd.DataFrame(
-                measure.regionprops_table(
-                    labels,
-                    intensity_image=soma_distance,
-                    properties=['label', 'min_intensity', 'max_intensity'],  # area is volume for 3D images
-                )
-            )
-            distance_table.rename(columns={'min_intensity': 'dist_to_soma'}, inplace=True)
-            distance_col = distance_table["dist_to_soma"]
-            main_table = main_table.join(distance_col)
-        else:
-            main_table['dist_to_soma'] = pd.NA
-
-    if settings.Track != True:
-        # update label numbers based on offset
-        main_table['label'] += max_label
-        labels[labels > 0] += max_label
-        labels = create_filtered_labels_image(labels, main_table, logger)
-
-    #else:
-
-        # Clean up label image to remove objects from image.
-        #ids_to_keep = set(filtered_table['label'])  # Extract IDs to keep from your filtered DataFrame
-        # Create a mask
-        #mask_to_keep = np.isin(labels, list(ids_to_keep))
-        # Apply the mask: set pixels not in `ids_to_keep` to 0
-        #labels = np.where(mask_to_keep, labels, 0)
-
-    # update to included dendrite_id
-    #filtered_table.insert(4, 'dendrite_id', dendrite)
-
-    # create vol um measurement
-    main_table.insert(1, f'{prefix}_vol', main_table['area'] * (settings.input_resXY * settings.input_resXY * settings.input_resZ))
-    # drop filtered_table['area']
-    main_table = main_table.drop(['area'], axis=1)
-    # filtered_table.rename(columns={'area': 'spine_vol'}, inplace=True)
-
-    # create dist um cols
-    if prefix == 'head':
-        main_table = move_column(main_table, 'spine_length_dm', 2)
-        # replace multiply column spine_length by settings.input_resXY
-        main_table['spine_length_dm'] *= settings.input_resXY
-        # filtered_table.insert(8, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY))
-        main_table = move_column(main_table, 'dist_to_dendrite_dm', 3)
-        main_table['dist_to_dendrite_dm'] *= settings.input_resXY
-        # filtered_table.insert(10, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY))
-        main_table = move_column(main_table, 'dist_to_soma', 4)
-        main_table['dist_to_soma'] *= settings.input_resXY
-    # filtered_table.insert(12, 'dist_to_soma_um', filtered_table['dist_to_soma'] * (settings.input_resXY))
-
-    # logger.info(f"  filtered table before image filter = {len(filtered_table)}. ")
-    # logger.info(f"  image labels before filter = {np.max(labels)}.")
-    # integrated_density
-    main_table[f'{prefix}_C1_int_density'] = main_table[f'{prefix}_vol'] * main_table[f'{prefix}_C1_mean_int']
-
-    # measure remaining channels
-    for ch in range(image.shape[1] - 1):
-        main_table[f'{prefix}_C' + str(ch + 2) + '_int_density'] = main_table[f'{prefix}_vol'] * main_table[
-            f'{prefix}_C' + str(ch + 2) + '_mean_int']
-
-    # Drop unwanted columns
-    # filtered_table = filtered_table.drop(['spine_vol','spine_length', 'dist_to_dendrite', 'dist_to_soma'], axis=1)
-    #logger.info(
-    #    f"     After filtering {len(filtered_table)} spines were analyzed from a total of {len(main_table)} putative spines")
-
-    return main_table, labels
 
 
 def create_filtered_labels_image(labels, filtered_table, logger):
@@ -4800,7 +4246,7 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
                     masked_mip_list.extend(block_masked_mip)
                     masked_slice_list.extend(block_masked_slice)
                     vol_list.extend(block_vol)
-                    gc.collect()
+                gc.collect()
 
         progress_percentage = ((i + 1) * y_blocks * x_blocks) / total_blocks * 100
         #print(f'Progress: {progress_percentage:.2f}%   ', end='', flush=True)
@@ -4995,10 +4441,6 @@ def create_MIP_spine_arrays_in_blocks_4d(image, y_locs, x_locs, volume_size, set
     return final_4d, final_4d
 
 
-def contrast_stretch(image, pmin=2, pmax=98):
-    p2, p98 = np.percentile(image, (pmin, pmax))
-    return exposure.rescale_intensity(image, in_range=(p2, p98))
-
 
 def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite_distance, soma_distance, sizes, dist,
                          settings, locations, filename, logger):
@@ -5085,11 +4527,11 @@ def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite
                 properties=['label', 'min_intensity', 'max_intensity'],  # area is volume for 3D images
             )
         )
-        distance_table.rename(columns={'min_intensity': 'dist_to_soma'}, inplace=True)
-        distance_col = distance_table["dist_to_soma"]
+        distance_table.rename(columns={'min_intensity': 'euclidean_dist_to_soma'}, inplace=True)
+        distance_col = distance_table["euclidean_dist_to_soma"]
         main_table = main_table.join(distance_col)
     else:
-        main_table['dist_to_soma'] = pd.NA
+        main_table['euclidean_dist_to_soma'] = pd.NA
 
     # filter out small objects
     volume_min = sizes[0]  # 3
@@ -5140,15 +4582,15 @@ def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite
 
     # create dist um cols
 
-    filtered_table = move_column(filtered_table, 'spine_length', 7)
+    filtered_table = tables.move_column(filtered_table, 'spine_length', 7)
     # replace multiply column spine_length by settings.input_resXY
     filtered_table['spine_length'] *= settings.input_resXY
     # filtered_table.insert(8, 'spine_length_um', filtered_table['spine_length'] * (settings.input_resXY))
-    filtered_table = move_column(filtered_table, 'dist_to_dendrite', 9)
+    filtered_table = tables.move_column(filtered_table, 'dist_to_dendrite', 9)
     filtered_table['dist_to_dendrite'] *= settings.input_resXY
     # filtered_table.insert(10, 'dist_to_dendrite_um', filtered_table['dist_to_dendrite'] * (settings.input_resXY))
-    filtered_table = move_column(filtered_table, 'dist_to_soma', 11)
-    filtered_table['dist_to_soma'] *= settings.input_resXY
+    filtered_table = tables.move_column(filtered_table, 'euclidean_dist_to_soma', 11)
+    #filtered_table['euclidean_dist_to_soma'] *= settings.input_resXY
     # filtered_table.insert(12, 'dist_to_soma_um', filtered_table['dist_to_soma'] * (settings.input_resXY))
 
     # logger.info(f"  filtered table before image filter = {len(filtered_table)}. ")
@@ -5167,3 +4609,302 @@ def spine_measurementsV2(image, labels, dendrite, max_label, neuron_ch, dendrite
      #   f"     After filtering {len(filtered_table)} spines were analyzed from a total of {len(main_table)} putative spines")
 
     return filtered_table, labels
+
+
+#############################################################
+#CUPY functions
+#############################################################
+
+def pad_subvolume_gpu(subvolume_gpu, pad_width):
+    subvolume_gpu = cp.asarray(subvolume_gpu)
+    return cp.pad(subvolume_gpu, ((pad_width, pad_width), (pad_width, pad_width), (pad_width, pad_width)),
+                  mode='constant', constant_values=0)
+
+
+
+def get_bounding_box_cupy(mask, margin, shape, settings):
+    """Get the bounding box of a binary mask with added margin."""
+    margin_y = margin_x = int(margin / settings.input_resXY)
+    margin_z = int(margin / settings.input_resZ)
+    z, y, x = cp.where(mask)
+
+    z_min, z_max = int(max(z.min().item() - margin_z, 0)), int(min(z.max().item() + margin_z + 1, shape[0]))
+    y_min, y_max = int(max(y.min().item() - margin_y, 0)), int(min(y.max().item() + margin_y + 1, shape[1]))
+    x_min, x_max = int(max(x.min().item() - margin_x, 0)), int(min(x.max().item() + margin_x + 1, shape[2]))
+
+    return z_min, z_max, y_min, y_max, x_min, x_max
+
+
+
+
+
+#############################################################
+# Excluded functionality and other functions
+#############################################################
+
+class FakeStream(object):
+    def isatty(self):
+        return False
+
+
+def extract_subvolumes_GPU_batch(labeled_array, labels, padding=5):
+    """
+    Extract subvolumes for multiple labels in parallel on GPU using CuPy.
+
+    Args:
+        labeled_array (cp.ndarray): Labeled array where each unique label represents a distinct region.
+        labels (cp.ndarray): Array of unique labels to extract.
+        padding (int): Padding to apply around the bounding box of each labeled region.
+
+    Returns:
+        subvolumes (list of cp.ndarray): List of subvolumes for each label.
+        coords (list of cp.ndarray): List of start coordinates for each subvolume.
+    """
+    subvolumes = []
+    start_coords = []
+
+    # Convert to CuPy array if it's not already
+    labeled_array = cp.asarray(labeled_array)
+    labels = cp.asarray(labels)
+
+    # Get binary masks for all labels in one batch operation
+    binary_masks = labeled_array[:, :, :, None] == labels[None, None, None, :]  # Shape: (z, y, x, n_labels)
+
+    # Iterate through the labels and process each label's subvolume in parallel
+    for idx, label in enumerate(labels):
+        # Find the coordinates of the current label
+        #print(f"Processing label {label}...")
+        binary_mask = binary_masks[..., idx]
+        coords = cp.argwhere(binary_mask)
+
+        # Check if there are any coordinates for the current label
+        if coords.size == 0:
+            continue
+
+        # Compute the start and end coordinates with padding
+        start = cp.maximum(cp.min(coords, axis=0) - padding, 0)
+        end = cp.minimum(cp.max(coords, axis=0) + padding + 1, cp.array(labeled_array.shape))
+
+        # Extract the subvolume for the current label
+        subvolume = labeled_array[start[0]:end[0], start[1]:end[1], start[2]:end[2]] == label
+
+        # Store the subvolume and the start coordinates
+        subvolumes.append(subvolume)
+        start_coords.append(start)
+
+    return subvolumes, cp.stack(start_coords)
+
+
+def spine_neck_analysis_gpu_batch(subvolumes, logger, scaling):
+
+    cp_subvolumes = [cp.asarray(sv) for sv in subvolumes]
+
+    results = []
+
+    for cp_subvolume in cp_subvolumes:
+
+        # Extract surface using marching cubes
+        verts, faces, _, _ = marching_cubes(cp.asnumpy(cp_subvolume))
+
+        # Convert vertices and faces to CuPy arrays
+        verts = cp.asarray(verts) * cp.asarray(scaling)
+        faces = cp.asarray(faces)
+
+        # Compute volume using triangles
+        volume = mesh_volume(verts, faces)
+
+        # compute length and then widths
+        length, min_width, max_width, mean_width, skeleton_result = mesh_neck_width_and_length(cp_subvolume, verts, logger, scaling)
+        # Compute length using the longest path
+        #length = mesh_length(verts, faces)
+
+        # Compute width statistics
+        #min_width, max_width, mean_width = mesh_neck_width(verts, faces)
+        results.append((volume, length, min_width, max_width, mean_width))
+
+    return results #volume, length, min_width, max_width, mean_width
+
+
+
+def second_pass_annotation(head_labels_vol, neck_labels_vol, dendrite_vol, neuron_vol, locations, settings, logger):
+    #dendrites and labels and must be binarized for further analysis
+    #ensure data is rescaled to match second pass model
+
+    start_time = time.time()
+    free_mem, total_mem = cp.cuda.runtime.memGetInfo()
+    logger.info(f"       Available GPU memory: {free_mem / 1e9:.2f} GB")
+    # estimate requirements
+    avg_size = 8 / settings.refinement_Z * 8 /  settings.refinement_XY * 8 /  settings.refinement_XY  # spine or neck
+    batch_size = max(1, int(free_mem * 0.7 / (avg_size * 4)))  # 4 bytes per float32
+    #print(f"Using batch size: {batch_size}")
+
+    # Move data to GPU and create multi-channel array
+    cp_multi_channel = cp.stack([cp.asarray(head_labels_vol+neck_labels_vol),
+                                            cp.asarray(neck_labels_vol > 0),
+                                            cp.asarray(dendrite_vol >0),
+                                            cp.asarray(neuron_vol)], axis=-1)
+
+    # Get unique labels from array A (excluding background)
+    labels = cp.unique(cp_multi_channel[:, :, :, 0])
+    labels = labels[labels != 0]
+
+
+
+      #batch
+    for i in range(0, len(labels), batch_size):
+        batch_labels = labels[i:i + batch_size]
+        logger.info(f"      Processing batch {i // batch_size + 1} of {len(labels) // batch_size + 1}...")
+
+        # Extract subvolumes
+        sub_volumes, start_coords = extract_subvolumes_mulitchannel_GPU_batch_2ndpass(cp_multi_channel, batch_labels)
+
+        #save each subvolume as a tiff in a folder
+        for subvol, label in zip(sub_volumes, batch_labels):
+
+
+            # save as tif and resahpe for imageJ
+            imwrite_filename = os.path.join(locations.nnUnet_2nd_pass, f"subvol_{10000+label}_0000.tif")
+            # imageJ ZCYX - currently ZYXC so fix
+
+            # subvol_out = subvol.get()
+            imwrite(imwrite_filename, subvol[:,:,:,3].get().transpose(0, 1, 2).astype(np.uint16), compression=('zlib', 1), imagej=True,
+                    photometric='minisblack', metadata={'unit': 'um', 'axes': 'ZYX'})
+
+            #process with nnunet
+
+        # split the path into subdirectories
+        subdirectories = os.path.normpath(settings.refinement_model_path).split(os.sep)
+        last_subdirectory = subdirectories[-1]
+        # find all three digit sequences in the last subdirectory
+        matches = re.findall(r'\d{3}', last_subdirectory)
+        # If there's a match, assign it to a variable
+        dataset_id = matches[0] if matches else None
+
+        logger.info("\nPerforming spine refinement on GPU...\n")
+        #create dir locations.nnUnet_2nd_pass+'\labels'
+        if not os.path.exists(locations.nnUnet_2nd_pass+'\labels'):
+            os.makedirs(locations.nnUnet_2nd_pass+'\labels')
+
+        ##uncomment if issues with nnUnet
+        # logger.info(f"{settings.nnUnet_conda_path} , {settings.nnUnet_env} , {locations.nnUnet_input}, {locations.labels} , {dataset_id} , {settings.nnUnet_type} , {settings}")
+
+        return_code = sr. run_nnunet_predict(settings.nnUnet_conda_path, settings.nnUnet_env,
+                                         locations.nnUnet_2nd_pass, locations.nnUnet_2nd_pass+'\labels', dataset_id, settings.nnUnet_type,
+                                         settings, logger)
+
+        logger.info(f"Updating subvolumes with refined labels...")
+
+        #import all tifs in output folder as updated_sub_volumes .tif
+        updated_sub_volumes = import_tiff_files_to_cupy_list(locations.nnUnet_2nd_pass+'\labels')
+
+        multi_channel_subvolumes = []
+
+        for subvolume, label in zip(updated_sub_volumes, labels):
+            # Create boolean masks for each channel
+            c0 = (subvolume == 1).astype(cp.float32) * label  # Multiply by label
+            c1 = (subvolume == 2).astype(cp.float32)
+            c2 = (subvolume == 4).astype(cp.float32)  * label  # Multiply by label
+
+            # Stack the channels to create a multi-channel array
+            multi_channel = cp.stack([c0, c1, c2], axis=-1)
+
+            multi_channel_subvolumes.append(multi_channel)
+        # Clean up label folder
+        # delete nnunet input folder and files
+        if settings.save_intermediate_data == False:
+
+            shutil.rmtree(locations.nnUnet_2nd_pass)
+            shutil.rmtree(locations.nnUnet_2nd_pass+'\labels')
+
+        # Insert processed subvolumes back into the original image
+        logger.info(f"Inserting refined subvolumes back into the original image...")
+        cp_multi_channel = insert_subvolumes(cp_multi_channel, multi_channel_subvolumes, start_coords, labels)
+
+    return cp_multi_channel
+
+
+def insert_subvolumes(original_image, processed_subvolumes, start_coords, labels):
+    # Create a mask for the areas we've modified
+    modified_mask = cp.zeros(original_image.shape[:3], dtype=bool)
+
+    for subvolume, start, label in zip(processed_subvolumes, start_coords, labels):
+        end = start + cp.array(subvolume.shape[:3])
+
+        # Create a mask for the current label in the original image
+        label_mask = original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 0] == label
+
+        # Update the modified mask
+        modified_mask[start[0]:end[0], start[1]:end[1], start[2]:end[2]] |= label_mask
+
+        # Clear the areas corresponding to the current label in c0 and c1
+        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 0] = cp.where(label_mask, 0,
+                                                                                        original_image[start[0]:end[0],
+                                                                                        start[1]:end[1],
+                                                                                        start[2]:end[2], 0])
+        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 1] = cp.where(label_mask, 0,
+                                                                                        original_image[start[0]:end[0],
+                                                                                        start[1]:end[1],
+                                                                                        start[2]:end[2], 1])
+
+        # Add the subvolume data where it's non-zero
+        subvolume_mask = subvolume > 0
+        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 0] += cp.where(subvolume_mask[..., 0],
+                                                                                         subvolume[..., 0], 0)
+        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 1] += cp.where(subvolume_mask[..., 2],
+                                                                                         subvolume[..., 2], 0)
+
+        # For c2, combine using logical OR
+        original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 2] = cp.logical_or(
+            original_image[start[0]:end[0], start[1]:end[1], start[2]:end[2], 2],
+            subvolume[..., 1] > 0
+        ).astype(original_image.dtype)
+
+    # Clear any remaining voxels in c0 and c1 that weren't replaced
+    original_image[:, :, :, 0] = cp.where(modified_mask, original_image[:, :, :, 0], 0)
+    original_image[:, :, :, 1] = cp.where(modified_mask, original_image[:, :, :, 1], 0)
+
+    return original_image
+
+def flush_ram_and_gpu_memory(settings, logger):
+    """
+    Force garbage collection on CPU memory and free blocks in CuPy's memory pools.
+    """
+    # Log memory usage before flush
+    size_threshold = 2e6 #(2MB)
+    if settings.save_intermediate_data == True:
+        process = psutil.Process(os.getpid())
+        mem_before = process.memory_info().rss / (1024 * 1024)  # in MB
+        logger.info(f"CPU memory usage before flush: {mem_before:.2f} MB")
+
+    namespace = globals()
+    if namespace is not None:
+        keys_to_delete = []
+        for var_name, obj in list(namespace.items()):
+            # Check if it's a NumPy or CuPy array with large nbytes
+            if isinstance(obj, (np.ndarray, cp.ndarray)):
+                # obj.nbytes is the data size in bytes
+                if obj.nbytes >= size_threshold:
+                    keys_to_delete.append(var_name)
+
+        # Actually remove them
+        for var_name in keys_to_delete:
+            if logger is not None:
+                size_mb = namespace[var_name].nbytes / (1024 * 1024)
+                logger.info(f"[flush] Deleting large array '{var_name}' (~{size_mb:.2f} MB).")
+            del namespace[var_name]
+
+
+    # Force Python garbage collection
+    gc.collect()
+
+    # Synchronize and free GPU memory blocks
+    cp.cuda.Device().synchronize()
+    cp.get_default_memory_pool().free_all_blocks()
+    cp.get_default_pinned_memory_pool().free_all_blocks()
+
+    # Log memory usage after flush
+    if settings.save_intermediate_data == True:
+        process = psutil.Process(os.getpid())
+        mem_after = process.memory_info().rss / (1024 * 1024)  # in MB
+        logger.info(f"CPU memory usage after flush: {mem_after:.2f} MB")
+        logger.info("Flushed CPU & GPU memory.")

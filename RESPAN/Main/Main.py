@@ -16,8 +16,6 @@ __download__  = 'http://www.github.com/lahmmond/RESPAN'
 
 import os
 import sys
-#import numpy as np
-import pandas as pd
 import yaml
 import ast
 
@@ -153,7 +151,8 @@ class Create_Locations():
 class Create_Settings():
 
     def __init__(self, data_dir):
-        with open(data_dir+"Analysis_Settings.yaml", 'r') as ymlfile:
+        settings_file = os.path.join(str(data_dir), "Analysis_Settings.yaml")
+        with open(settings_file, 'r') as ymlfile:
             #setting = yaml.safe_load(ymlfile)
             setting = yaml.load(ymlfile, Loader = PrettySafeLoader)
             

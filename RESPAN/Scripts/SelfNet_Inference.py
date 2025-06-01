@@ -29,12 +29,22 @@ import numpy as np
 from tifffile import imread, imwrite
 import threading
 import argparse
+import sys
+import locale
 
 import torch.nn as nn
 from torch.nn import init
 import functools
 import math
 import torch.nn.functional as F
+
+# Force UTF-8 encoding for frozen applications
+if getattr(sys, 'frozen', False):
+    # Set environment variables for UTF-8
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    # Reconfigure stdout/stderr
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 
 def reslice_old_selfnet(img,position,x_res,z_res):
@@ -556,9 +566,9 @@ class myThread (threading.Thread):
         self.write_stack=write_stack
 
     def run(self):
-        print ("start threading：" + self.name)
+        print ("start threading" + self.name)
         output_img(self.deblur_net, self.device, self.min_v,self.max_v,self.write_stack,self.raw_img)
-        print ("quit threading：" + self.name)
+        print ("quit threading" + self.name)
 
 
 def upsample_block(raw_img,x_res,z_res,deblur_netA,deblur_netB, min_v, max_v):

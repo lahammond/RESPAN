@@ -235,7 +235,10 @@ def validate_analysis(labels1, labels2, settings, locations, logger):
     
         logger.info(f"Spine comparison complete for file {analysis_files[file]}\n")
         
-    comp_spine_summary.to_csv(locations + 'Analysis_Evaluation.csv',index=False) 
+    #date to add to file name
+    date = pd.to_datetime('today').strftime('%Y-%m-%d')
+    evaluation_file = os.path.join(locations, f'Analysis_Evaluation_{date}.csv')
+    comp_spine_summary.to_csv(evaluation_file,index=False)
     logger.info("\nRESPAN validation complete.\n")
 
 def spine_comparison(gt, output, sizes, spine_table, logger):
