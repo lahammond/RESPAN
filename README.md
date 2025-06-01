@@ -43,7 +43,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 ## 🖼️ Input data & considerations
 
 * **File format** – RESPAN currently accepts 2D/3D **TIFF** files.
-* **Conversion macro** – use the supplied [Fiji + OMERO‑BioFormats macro](./tools/Fiji_BatchToTIFF.ijm) to batch‑convert ND2/CZI/LIF, etc.
+* **Conversion macro** – use the supplied [Fiji + OMERO‑BioFormats macro](https://github.com/lahammond/RESPAN/blob/main/RESPAN/ImageJ_Macros/Tif_Batch_2024.ijm) to batch‑convert ND2/CZI/LIF, etc.
 * **Model specificity** – image‑restoration models (CARE & SelfNet) must match the modality & resolution being analyzed; mismatches can hallucinate or erase features. We strongly encourage retraining specific models for the microscope, objective, and resolution being used. RESPAN adapts input data to our pretrained segmentation models, and good results are likely without retraining, but we recommend using these first-pass results to fine-tune or train application-specific models 
 * **Zarr support** – OME-Zarr generation has been added to support larger datasets, and future updates intend to utilize these files with Dask.
 
@@ -51,12 +51,10 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 
 1. **Download**  
    • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1?usp=drive_link)  
-   • Pre‑trained models &nbsp;→&nbsp; [Models](https://drive.google.com/drive/folders/1AguUMNvBPAdCHDsXu8dddV_6twuoNGrz?usp=drive_link)<br>
-   • [Anaconda](https://www.anaconda.com/) 
+   • Pre‑trained models &nbsp;→&nbsp; see table below<br>
 3. **Install**  
-   ▸ Install Anaconda<br>
    ▸ Unzip RESPAN.zip with [7zip](https://www.7-zip.org/)<br>
-   ▸ Double‑click RESPAN.exe (first run may require 2- 3 min to initialize)<br>
+   ▸ Double‑click RESPAN.exe (first run may require 1-2 min to initialize)<br>
 4. **Prepare your data**  
    ```text
    MyExperiment/
@@ -98,13 +96,14 @@ Detailed protocols – including data organisation and annotation tips – are i
 
 ## 🎯 Pre‑trained segmentation models
   
-| Segmentation Model | Modality | Resolution | Annotations | Details |
-| ------------- | ------------- | ------------- | ------------- | ------------- |
-| Model 1 | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
-| Model 2 | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
-| Model 3 | Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 908 datasets, additional augmentation |
+| Segmentation Model | Download | Modality | Resolution | Annotations | Details |
+| ------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
+| Model 1A | [Models](https://drive.google.com/drive/folders/1LTEO4aApPfTeTDEECMC-QJCpwWkL_C6w?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
+| Model 2B | [Models](https://drive.google.com/drive/folders/1j9XQi4x1-IsRvln_-dzR-vF94cuV35RZ?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
+| Model 2 | [Models](https://drive.google.com/drive/folders/1MTSU7acFDZOUs9q1t_0gwU9DIbckYugi?usp=drive_link) | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
+| Model 3 |  [Models](https://drive.google.com/drive/folders/1-KQc-Tzpk1dn3fgAln-KJrIIwM6amVFG?usp=drive_link) |Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 908 datasets, additional augmentation |
 
-For detailed protocols using RESPAN, please refer to [our manuscript.](https://www.biorxiv.org/content/10.1101/2024.06.06.597812)
+For detailed protocols using RESPAN, please refer to [our manuscript.](https://www.biorxiv.org/content/10.1101/2024.06.06.597812v2)
 
 ---
 
