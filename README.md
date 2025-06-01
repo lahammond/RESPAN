@@ -50,7 +50,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 ## 🚀 Quick start (Windows GUI)
 
 1. **Download**  
-   • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1?usp=drive_link)  
+   • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/file/d/1nx3d6pmykwLspIzwi_YoX2CWo0JTMrHy/view?usp=drive_link)  
    • Pre‑trained models &nbsp;→&nbsp; see table below<br>
 3. **Install**  
    ▸ Unzip RESPAN.zip with [7zip](https://www.7-zip.org/)<br>
