@@ -29,13 +29,14 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 
 ## 💻 System requirements
 
-| | **Minimum** | **Recommended** |
+| | **Minimum Recommended** | **Recommended** |
 |---|---|---|
 | OS | Windows 10/11 ×64 | Windows 10/11 ×64 |
-| GPU | NVIDIA ≥ 2 GB VRAM | NVIDIA RTX 4090 (24 GB) |
+| GPU | NVIDIA ≥ 8 GB VRAM | NVIDIA RTX 4090 (24 GB) |
 | RAM | 32 GB | 128–256 GB |
 | Storage | HDD | SSD |
 
+> *RESPAN likely works for NVIDIA GPUs with less than 8GB, but this has not been tested.
 > *RESPAN implements data chunking and tiling, but for some steps, larger images currently necessitate increased RAM requirements. 
 
 ---
@@ -78,7 +79,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
    | `Tables/` | Per‑image CSVs (`Detected_spines_*.csv`) + experiment summary |
    | `Validation_Data/` | MIPs & volumes for QA (input, labels, skeleton, distance) |
    | `SWC_files/` | Neuron/dendrite traces from Vaa3D |
-   | `Spine_Arrays/` | Cropped 3‑D stacks around every spine |
+   | `Spine_Arrays/` | Cropped 2D maximum intensity projections and 3D stacks centered around every spine |
 
 ---
 
@@ -98,10 +99,10 @@ Detailed protocols – including data organisation and annotation tips – are i
   
 | Segmentation Model | Download | Modality | Resolution | Annotations | Details |
 | ------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
-| Model 1A | [Models](https://drive.google.com/drive/folders/1LTEO4aApPfTeTDEECMC-QJCpwWkL_C6w?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
-| Model 2B | [Models](https://drive.google.com/drive/folders/1j9XQi4x1-IsRvln_-dzR-vF94cuV35RZ?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 112 datasets, including restored and raw data and additional augmentation |
-| Model 2 | [Models](https://drive.google.com/drive/folders/1MTSU7acFDZOUs9q1t_0gwU9DIbckYugi?usp=drive_link) | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
-| Model 3 |  [Models](https://drive.google.com/drive/folders/1-KQc-Tzpk1dn3fgAln-KJrIIwM6amVFG?usp=drive_link) |Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 908 datasets, additional augmentation |
+| Model 1A | [download](https://drive.google.com/drive/folders/1j9XQi4x1-IsRvln_-dzR-vF94cuV35RZ?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 224 datasets, including restored and raw data and additional augmentation |
+| Model 2B | [download](https://drive.google.com/drive/folders/1LTEO4aApPfTeTDEECMC-QJCpwWkL_C6w?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines core & shell, dendrites, axons, and soma | 44 datasets, including restored and raw data and additional augmentation |
+| Model 2 | [download](https://drive.google.com/drive/folders/1MTSU7acFDZOUs9q1t_0gwU9DIbckYugi?usp=drive_link) | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
+| Model 3 |  [download](https://drive.google.com/drive/folders/1-KQc-Tzpk1dn3fgAln-KJrIIwM6amVFG?usp=drive_link) |Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 908 datasets, additional augmentation |
 
 For detailed protocols using RESPAN, please refer to [our manuscript.](https://www.biorxiv.org/content/10.1101/2024.06.06.597812v2)
 
