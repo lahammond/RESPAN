@@ -22,6 +22,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 - **Model training from the GUI** – train/finetune nnU‑Net, CARE‑3D or SelfNet without code.
 - **Comprehensive and Automatic Results** – automatic generation of validation MIPs, 3D volumes, and comprehensive spatial/morphological statistics.
 - **Built‑in validation** – compare ground truth datasets to RESPAN outputs to validate quantification.
+- **Step-by-step tutorials** - view our introduction and tutorials for analysis and model training [here] (https://youtu.be/Q6zu6y5P6Mc)
 - **Stand‑alone or scriptable** – run the GUI on Windows or from a Python environment.
 - **Lossless compression** – gzip lossless compression of data ensures a minimal footprint for generated results and validation images.
 
@@ -36,23 +37,29 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 | RAM | 32 GB | 128–256 GB |
 | Storage | HDD | SSD |
 
-> *RESPAN likely works for NVIDIA GPUs with less than 8GB, but this has not been tested.<br>
+> *RESPAN should work for NVIDIA GPUs with less than 8GB, but this has not been tested.<br>
 > *RESPAN implements data chunking and tiling, but for some steps, larger images currently necessitate increased RAM requirements. <br>
-> *See tabel below for further performance testing information.
+> *Please refer to the table at the end of this document for further performance testing information.
 
 ---
 
-## 🖼️ Input data & considerations
-
-* **File format** – RESPAN currently accepts 2D/3D **TIFF** files.
-* **Conversion macro** – use the supplied [Fiji + OMERO‑BioFormats macro](https://github.com/lahammond/RESPAN/blob/main/RESPAN/ImageJ_Macros/Tif_Batch_2024.ijm) to batch‑convert ND2/CZI/LIF, etc.
-* **Model specificity** – image‑restoration models (CARE & SelfNet) must match the modality & resolution being analyzed; mismatches can hallucinate or erase features. We strongly encourage retraining specific models for the microscope, objective, and resolution being used. RESPAN adapts input data to our pretrained segmentation models, and good results are likely without retraining, but we recommend using these first-pass results to fine-tune or train application-specific models 
-* **Zarr support** – OME-Zarr generation has been added to support larger datasets, and future updates intend to utilize these files with Dask.
-
 ## 🚀 Quick start (Windows GUI)
 
+If you need help getting started, please refer to our video tutorial with chapters linked below:
+    • [Introduction to RESPAN and Image Segmentation](https://www.youtube.com/watch?v=Q6zu6y5P6Mc)
+    • [Installing RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1513s)
+    • [Navigating the RESPAN GUI](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1787s)
+    • [Example use of RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2318s)
+    • [Understanding RESPAN Outputs](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2677s)
+    • [Training CARE Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3122s)
+    • [Training SelfNet Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3390s)
+    • [Using Restoration Models during RESPAN Analysis](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3515s)
+    • [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)
+    
 1. **Download**  
-   • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1)  
+   • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1)
+     if required, earlier versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link)
+   • RESPAN Analysis Settings file &nbsp;→&nbsp; [here] https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link
    • Pre‑trained models &nbsp;→&nbsp; see table below<br>
 3. **Install**  
    ▸ Unzip RESPAN.zip with [7zip](https://www.7-zip.org/)<br>
@@ -63,13 +70,13 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
    ├── Animal_A/
    │   ├── dendrite0.tif
    │   ├── dendrite1.tif   
-   │   └── Analysis_Settings.yml (example file provided [here](link_to_analysis_settings), and with RESPAN) 
+   │   └── Analysis_Settings.yml (example file provided [here](https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link) 
    └── Animal_B/
        ├── dendrite0.tif
        ├── ...   
        └── Analysis_Settings.yml
    ```
-   *Copy **Analysis_Settings.yml** into every sub‑folder (stores resolution, advanced settings, and allows batch processing. Defaults suit most experiments).
+   *Copy **Analysis_Settings.yml** into every sub‑folder (stores resolution, advanced settings, and allows batch processing. Default settings suit most experiments, with editing only required when using advanced functionality and image restoration).
 5. **Run**  
    • Select the *parent* folder (e.g. "MyExperiment") in the GUI  
    • Update analysis settings
@@ -84,13 +91,22 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 
 ---
 
+## 🖼️ Input data & considerations
+
+* **File format** – RESPAN currently accepts 2D/3D **TIFF** files.
+* **Conversion macro** – use the supplied [Fiji + OMERO‑BioFormats macro](https://github.com/lahammond/RESPAN/blob/main/RESPAN/ImageJ_Macros/Tif_Batch_2024.ijm) to batch‑convert ND2/CZI/LIF, etc.
+* **Model specificity** – image‑restoration models (CARE & SelfNet) must match the modality & resolution being analyzed; mismatches can hallucinate or erase features. We strongly encourage retraining specific models for the microscope, objective, and resolution being used. RESPAN adapts input data to our pretrained segmentation models, and good results are likely without retraining, but we recommend using these first-pass results to fine-tune or train application-specific models 
+* **Zarr support** – Internally, RESPAN has added OME-Zarr generation to support larger datasets, with future updates intending to utilize these files with Dask.
+  
+---
+
 ## 🛠️ Advanced usage: training new models
 
-| Task | GUI Tab | Typical time |
-|------|---------|--------------|
-| Segmentation (nnU‑Net) | **nnU‑Net Training** | 12–24 h |
-| Image restoration (CARE‑3D) | **CARE Training** | 3–5 h |
-| Axial resolution (SelfNet) | **SelfNet Training** | ≤2 h |
+| Task | GUI Tab | Typical time | Tutorial link |
+|------|---------|--------------|----------------|
+| Segmentation (nnU‑Net) | **nnU‑Net Training** | 12–24 h | [tutorial](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s) |
+| Image restoration (CARE‑3D) | **CARE Training** | 3–5 h | tutorial |
+| Axial resolution (SelfNet) | **SelfNet Training** | ≤2 h | tutorial |
 
 Detailed protocols – including data organisation and annotation tips – are in the [User Guide](https://github.com/lahammond/RESPAN/blob/main/RESPAN%20Guide%202025.pdf).
 
