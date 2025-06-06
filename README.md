@@ -45,22 +45,23 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 
 ## 🚀 Quick start (Windows GUI)
 
-If you need help getting started, please refer to our video tutorial with chapters linked below:<br>
-    • [Introduction to RESPAN and Image Segmentation](https://www.youtube.com/watch?v=Q6zu6y5P6Mc)<br>
-    • [Installing RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1513s)<br>
-    • [Navigating the RESPAN GUI](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1787s)<br>
-    • [Example use of RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2318s)<br>
-    • [Understanding RESPAN Outputs](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2677s)<br>
-    • [Training CARE Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3122s)<br>
-    • [Training SelfNet Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3390s)<br>
-    • [Using Restoration Models during RESPAN Analysis](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3515s)<br>
-    • [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)<br>
+If you need help getting started, please refer to our video tutorial. Chapters linked below:<br>
+    - [Introduction to RESPAN and Image Segmentation](https://www.youtube.com/watch?v=Q6zu6y5P6Mc)<br>
+    - [Installing RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1513s)<br>
+    - [Navigating the RESPAN GUI](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1787s)<br>
+    - [Example use of RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2318s)<br>
+    - [Understanding RESPAN Outputs](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2677s)<br>
+    - [Training CARE Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3122s)<br>
+    - [Training SelfNet Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3390s)<br>
+    - [Using Restoration Models during RESPAN Analysis](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3515s)<br>
+    - [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)<br>
 <br>    
 1. **Download**  
    • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1)
      if required, earlier versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link)
    • RESPAN Analysis Settings file &nbsp;→&nbsp; [here] https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link
    • Pre‑trained models &nbsp;→&nbsp; see table below<br>
+   • For testing we also provide example spinning disk confocal [datasets](https://drive.google.com/drive/folders/1EDVKGOotXsRbQdcGckADQu4zYjeQD9wH?usp=drive_link) with example [results](https://drive.google.com/drive/folders/1ExA2w5PdQw3_5Cfp6PPmwGp3_qwLbLgh?usp=drive_link) 
 3. **Install**  
    ▸ Unzip RESPAN.zip with [7zip](https://www.7-zip.org/)<br>
    ▸ Double‑click RESPAN.exe (first run may require 1-2 min to initialize)<br>
@@ -105,8 +106,8 @@ If you need help getting started, please refer to our video tutorial with chapte
 | Task | GUI Tab | Typical time | Tutorial link |
 |------|---------|--------------|----------------|
 | Segmentation (nnU‑Net) | **nnU‑Net Training** | 12–24 h | [tutorial](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s) |
-| Image restoration (CARE‑3D) | **CARE Training** | 3–5 h | tutorial |
-| Axial resolution (SelfNet) | **SelfNet Training** | ≤2 h | tutorial |
+| Image restoration (CARE‑3D) | **CARE Training** | 3–5 h | [tutorial](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3515s) |
+| Axial resolution (SelfNet) | **SelfNet Training** | ≤2 h | [tutorial](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3390s) |
 
 Detailed protocols – including data organisation and annotation tips – are in the [User Guide](https://github.com/lahammond/RESPAN/blob/main/RESPAN%20Guide%202025.pdf).
 
