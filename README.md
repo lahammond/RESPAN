@@ -57,8 +57,7 @@ If you need help getting started, please refer to our video tutorial. Chapters l
     - [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)<br>
 <br>    
 1. **Download**  
-   • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1)<br>
-     if required, earlier versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link)<br>
+   • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1) (if required, previous versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link))<br>
    • RESPAN Analysis Settings file &nbsp;→&nbsp; [here] https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link
    • Pre‑trained models &nbsp;→&nbsp; see table below<br>
    • For testing we also provide example spinning disk confocal [datasets](https://drive.google.com/drive/folders/1EDVKGOotXsRbQdcGckADQu4zYjeQD9wH?usp=drive_link) with example [results](https://drive.google.com/drive/folders/1ExA2w5PdQw3_5Cfp6PPmwGp3_qwLbLgh?usp=drive_link) 
