@@ -158,33 +158,6 @@ def log_output(pipe, logger, buffer):
             #print(f"Error processing line: {str(e)}", flush=True)
             #logger.error(f"Error processing line: {str(e)}")
 
-def run_process_with_logging(cmd, logger):
-    #process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) #buffsize=1
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, bufsize=1,
-                               universal_newlines=True)
-
-    stdout_buffer = []
-    stderr_buffer = []
-
-    # Start threads to read stdout and stderr
-    stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger, stdout_buffer))
-    stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger, stderr_buffer))
-
-    stdout_thread.start()
-    stderr_thread.start()
-
-    # Wait for the process to complete
-    process.wait()
-
-    stdout_thread.join()
-    stderr_thread.join()
-
-    # Wait for the output threads to finish
-    stdout_output = ''.join(stdout_buffer)
-    stderr_output = ''.join(stderr_buffer)
-
-    return process.returncode, stdout_output, stderr_output   #process.stderr.read().decode().strip()
-
 
 ##############################################################################
 # SelfNet Restoration
@@ -613,9 +586,10 @@ def run_nnunet_predict(nnunet_predict_bat, input_dir, output_dir, dataset_id, nn
     # Define the command to be run
     # cmd = "nnUNetv2_predictRESPAN -i \"{}\" -o \"{}\" -d {} -c {} -f all".format(input_dir, output_dir, dataset_id, nnunet_type)
     #cmd = "nnUNetv2_predict -i \"{}\" -o \"{}\" -d {} -c {} -f all".format(input_dir, output_dir, dataset_id,nnunet_type)
-
-    cmd = [
-        str(nnunet_predict_bat),
+    cmd_list = [
+        str(settings.internal_py_path),
+        str(settings.clean_launcher),
+        str(nnunet_predict_bat),  # Target script
         "-i", input_dir,
         "-o", output_dir,
         "-d", dataset_id,
@@ -623,10 +597,27 @@ def run_nnunet_predict(nnunet_predict_bat, input_dir, output_dir, dataset_id, nn
         "-f", "all"
     ]
 
-    # Combine the activate environment command with the actual command
-    #final_cmd = f'{activate_env} && {cmd}'
+    # Convert to string for shell=True
+    cmd = ' '.join(f'"{arg}"' for arg in cmd_list)
 
-    return_code, stdout_out, stderr_out = run_process_with_logging(cmd, logger)
+    # Create clean environment
+    env = os.environ.copy()
+    env['PYTHONNOUSERSITE'] = '1'
+    env['PYTHONPATH'] = ''
+
+    # Preserve critical nnUNet environment variables
+    #logger.info("=== DEBUG: Preserving nnUNet variables ===")
+    # Preserve critical nnUNet environment variables
+    nnunet_vars = ['nnUNet_raw', 'nnUNet_preprocessed', 'nnUNet_results']
+    for var in nnunet_vars:
+        if var in os.environ:
+            env[var] = os.environ[var]
+            logger.info(f"     Preserving {var} = {os.environ[var]}")
+
+    print(f"Executing command: {cmd}")
+
+    return_code, stdout_out, stderr_out = run_process_with_logging(cmd, logger, env=env)
+
     # Run the command
     if return_code != 0:
         logger.info(f"Error: Command failed with return code {return_code}")
@@ -635,9 +626,43 @@ def run_nnunet_predict(nnunet_predict_bat, input_dir, output_dir, dataset_id, nn
         if stdout_out:
             logger.info(f"Output message:\n{stdout_out}")
 
-    # process = subprocess.Popen(final_cmd, shell=True)
-    # stdout, stderr = process.communicate()
     return return_code
+
+
+def run_process_with_logging(cmd, logger, env=None):
+    """Run process with logging, optionally with custom environment"""
+    # Use provided environment or default to current environment
+    if env is None:
+        env = os.environ.copy()
+
+    # Keep your existing process creation but add env parameter
+    process = subprocess.Popen(cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE,
+                               shell=True,
+                               bufsize=1,
+                               universal_newlines=True,
+                               env=env)  # Add environment parameter
+
+    stdout_buffer = []
+    stderr_buffer = []
+
+    # Start threads to read stdout and stderr (keeping your existing approach)
+    stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger, stdout_buffer))
+    stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger, stderr_buffer))
+    stdout_thread.start()
+    stderr_thread.start()
+
+    # Wait for the process to complete
+    process.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+
+    # Wait for the output threads to finish
+    stdout_output = ''.join(stdout_buffer)
+    stderr_output = ''.join(stderr_buffer)
+
+    return process.returncode, stdout_output, stderr_output #process.stderr.read().decode().strip()
 
 
 def _mapping_path(nn_input_dir):

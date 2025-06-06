@@ -4,8 +4,8 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'RESPAN'
-__version__   = '0.9.98'
-__date__      = "29 May, 2025"
+__version__   = '0.9.99'
+__date__      = "6 June, 2025"
 __author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2025 by Luke Hammond'
@@ -101,6 +101,7 @@ if FROZEN:
     INTERNAL_DIR = APP_DIR / "_internal"
     SELFNET_TRAINING_SCRIPT = INTERNAL_DIR / "SelfNet_Model_Training.py"
     SELFNET_INFERENCE_SCRIPT = INTERNAL_DIR / "SelfNet_Inference.py"
+    clean_launcher = INTERNAL_DIR / "clean_launcher.py"
 
     global_GUI_app = True
     global_respan_env = 'respan'
@@ -119,6 +120,7 @@ else:
     INSTALL_DIR = Path(r'C:\Users\Luke_H')
     SELFNET_TRAINING_SCRIPT = APP_DIR / "SelfNet_Model_Training.py"
     SELFNET_INFERENCE_SCRIPT = APP_DIR / "SelfNet_Inference.py"
+    clean_launcher = APP_DIR / "clean_launcher.py"
     global_GUI_app = False
     global_respan_env = 'respan99'
     global_env_path = str(VENV_DIR.parent)
@@ -1357,10 +1359,11 @@ class AnalysisWorker(QThread):
                     settings.nnUnet_env = global_respan_env
                     settings.selfnet_inference_script = str(SELFNET_INFERENCE_SCRIPT)
                     settings.selfnet_training_script = str(SELFNET_TRAINING_SCRIPT)
+                    settings.clean_launcher = str(clean_launcher)
                     settings.internal_py_path = str(PY_EXE)
                     settings.nnunet_predict_bat = nnunet_predict_bat
 
-
+                    settings.neck_generation = self.neck_generation
 
                     #basepath for selfnet
                     settings.basepath = base_path
@@ -2309,7 +2312,7 @@ class UNetWorker(QThread):
                 # initialize and run nnunet
                 #self.logger.info("\n Training nnU-Net. Please allow 12-24 hours depending on available GPU resources...")
 
-                mt.train_nnUNet(parent_dir, preprocessed_folder, self.model_output, self.datasetID, nnunet_plan_bat,
+                mt.train_nnUNet(parent_dir, preprocessed_folder, self.model_output, self.datasetID, str(PY_EXE), clean_launcher, nnunet_plan_bat,
                                 nnunet_train_bat , self.logger)
 
 

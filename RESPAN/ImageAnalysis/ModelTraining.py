@@ -64,35 +64,6 @@ def log_output(pipe, logger, log_function):
 #      logger.info(line.decode().strip())
 #     sys.stdout.flush()
 
-def run_process_with_logging(cmd, logger):
-    # process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, bufsize=1)
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, bufsize=0, text=True,
-                               universal_newlines=True, encoding='utf-8', errors='replace')
-
-    # Start threads to read stdout and stderr
-    # stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger))
-    # stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger))
-    stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger, logger.info))
-    stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger, logger.error))
-
-    stdout_thread.start()
-    stderr_thread.start()
-
-    while True:
-        if process.poll() is not None:
-            break  # Exit the loop if the process has finished
-        else:
-            # The process is still running; you can perform additional checks here if needed
-            pass
-    # Wait for the output threads to finish
-    stdout_thread.join()
-    stderr_thread.join()
-
-    # Wait for the process to complete
-    process.wait()
-
-    return process.returncode
-
 
 class LoggerStream(io.StringIO):
     def __init__(self, logger):
@@ -560,54 +531,166 @@ def generate_nnunet_json(input_folder, use_ignore=False):
     return json_data
 
 
-def train_nnUNet(raw, preprocessed, results, datasetID, plan_bat, train_bat, logger):
+def train_nnUNet(raw, preprocessed, results, datasetID, python_path, clean_launcher, plan_bat, train_bat, logger):
     # Set environment variables
     os.environ['nnUNet_raw'] = raw
     os.environ['nnUNet_preprocessed'] = preprocessed
     os.environ['nnUNet_results'] = results
 
-    # Define the commands
-    # Construct the command to activate the conda environment
-    # env_path = os.path.join(env_dir, nnUNet_env)
-    # os.environ['CONDA_ENVS_DIRS'] = env_path + os.pathsep + os.environ.get('CONDA_ENVS_DIRS', '')
 
-    #conda_activate_cmd = os.path.join(conda_dir, 'Scripts', 'activate.bat')
-    #activate_env = f'call {conda_activate_cmd} {nnUNet_env} && set PATH={os.path.join(env_dir, nnUNet_env, "Scripts")};%PATH%'
-
-    # activate_env = fr"{conda_dir}/Scripts/activate.bat {nnUNet_env} && set PATH={env_dir}/{nnUNet_env}\Scripts;%PATH%"
-    # activate_env = fr"set PATH={env_dir}/{nnUNet_env}\Scripts;%PATH%"
-    # logger.info(f' {conda_dir}/Scripts/activate.bat {nnUNet_env} && set PATH={env_dir}/{nnUNet_env}/Scripts;%PATH%.')
     # Define the nnUNet commands
-    command_plan_and_preprocess = f'{plan_bat} -d {datasetID} --verify_dataset_integrity'
-    command_train = f'{train_bat} {datasetID} 3d_fullres all'
+    #command_plan_and_preprocess = f'{plan_bat} -d {datasetID} --verify_dataset_integrity'
+    #command_train = f'{train_bat} {datasetID} 3d_fullres all'
 
+    cmd_plan = [
+        str(python_path),
+        str(clean_launcher),
+        str(plan_bat),
+        "-d", str(datasetID),
+        "--verify_dataset_integrity"
+    ]
+
+    # Command 2: Train using clean launcher (always)
+    cmd_train = [
+        str(python_path),
+        str(clean_launcher),
+        str(train_bat),
+        str(datasetID),
+        "3d_fullres",
+        "all"
+    ]
     # Combine the activate environment command with the actual nnUNet commands
     #final_cmd_plan_and_preprocess = f'{command_plan_and_preprocess}'
     #final_cmd_train = f'{activate_env} && {command_train}'
 
     # Run the commands
+
+
+
+    # Create clean environment but preserve nnUNet variables
+    env = os.environ.copy()
+    env['PYTHONNOUSERSITE'] = '1'
+    env['PYTHONPATH'] = ''
+
+    # Preserve nnUNet environment variables
+    nnunet_vars = ['nnUNet_raw', 'nnUNet_preprocessed', 'nnUNet_results']
+    for var in nnunet_vars:
+        if var in os.environ:
+            env[var] = os.environ[var]
+            logger.info(f"Preserving {var} = {os.environ[var]}")
+
+    # Run plan and preprocess
     logger.info('Running nnUNetv2_plan_and_preprocess...')
+    return_code_plan = run_process_with_logging(cmd_plan, logger, env=env)
 
-    return_code = run_process_with_logging(command_plan_and_preprocess, logger)
-    # process_plan_and_preprocess = subprocess.Popen(final_cmd_plan_and_preprocess, shell=True)
-    # process_plan_and_preprocess.wait()
-    logger.info(' Complete.')
+    if return_code_plan != 0:
+        logger.error(f"Plan and preprocess failed with return code {return_code_plan}")
+        return return_code_plan
 
+    logger.info('Plan and preprocess complete.')
+
+    # Run training
     date = time.strftime("%Y_%m_%d_%H_%M")
+    logger.info('\nRunning nnUNetv2_train 3d_fullres all. Please allow 12-24 hours depending on GPU resources...')
+    logger.info(f'Training log may not update until training is complete. If you wish to confirm progress '
+                f'you may open the log file located in:\n'
+                f'{results}\\Dataset{datasetID}\\nnUNetTrainer__nnUNetPlans__3d_fullres\\fold_all\\training_log_{date}.txt\n'
+                f'This file will update as training progresses, but the file will not refresh (you will have to close then reopen to recheck status).\n'
+                f'You may estimate the time remaining by multiplying the epoch time by 1000.')
 
-    logger.info('\nRunning nnUNetv2_train 3d_fullres all. Please 12-24 hours depending on GPU resources...')
-    logger.info(f' Training log may not update until training is complete. If you wish to confirm progress'
-                f' you may open the log file located in:\n'
-                f' {results}\Dataset{datasetID}\\nnUNetTrainer__nnUNetPlans__3d_fullres\\fold_all\\training_log_{date}.txt\n'
-                f' This file will update as training progresses, but the file will not refresh (you will have to close then reopen to recheck status).'
-                f'\n You may estimate the time remaining by multiplying the epoch time by 1000.')
-    # provide current date in this format 2024_7_26_19_26_54
-    # date = time.strftime("%Y_%m_%d_%H_%M")
+    return_code_train = run_process_with_logging(cmd_train, logger, env=env)
 
-    return_code = run_process_with_logging(command_train, logger)
-    # process_train = subprocess.Popen(final_cmd_train, shell=True)
-    # process_train.wait()
-    logger.info(' Complete.')
+    if return_code_train != 0:
+        logger.error(f"Training failed with return code {return_code_train}")
+        return return_code_train
+
+    logger.info('Training complete.')
+
+
+def run_process_with_logging(cmd, logger, env=None):
+    """Run process with logging, optionally with custom environment"""
+    # Use provided environment or default to current environment
+    if env is None:
+        env = os.environ.copy()
+
+    # Handle both string and list commands
+    if isinstance(cmd, list):
+        # For list commands, don't use shell=True
+        process = subprocess.Popen(cmd,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   shell=False,  # Don't use shell for list commands
+                                   bufsize=0,
+                                   text=True,
+                                   universal_newlines=True,
+                                   encoding='utf-8',
+                                   errors='replace',
+                                   env=env)
+        logger.info(f"Executing command: {' '.join(cmd)}")
+    else:
+        # For string commands, use shell=True (backward compatibility)
+        process = subprocess.Popen(cmd,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   shell=True,
+                                   bufsize=0,
+                                   text=True,
+                                   universal_newlines=True,
+                                   encoding='utf-8',
+                                   errors='replace',
+                                   env=env)
+        logger.info(f"Executing command: {cmd}")
+
+    # Start threads to read stdout and stderr
+    stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger, logger.info))
+    stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger, logger.error))
+    stdout_thread.start()
+    stderr_thread.start()
+
+    # Wait for process completion
+    while True:
+        if process.poll() is not None:
+            break  # Exit the loop if the process has finished
+        else:
+            # The process is still running; you can perform additional checks here if needed
+            pass
+
+    # Wait for the output threads to finish
+    stdout_thread.join()
+    stderr_thread.join()
+
+    # Wait for the process to complete
+    process.wait()
+    return process.returncode
+
+def run_process_with_logging_prev(cmd, logger):
+    # process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, bufsize=1)
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, bufsize=0, text=True,
+                               universal_newlines=True, encoding='utf-8', errors='replace')
+
+    # Start threads to read stdout and stderr
+    # stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger))
+    # stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger))
+    stdout_thread = threading.Thread(target=log_output, args=(process.stdout, logger, logger.info))
+    stderr_thread = threading.Thread(target=log_output, args=(process.stderr, logger, logger.error))
+
+    stdout_thread.start()
+    stderr_thread.start()
+
+    while True:
+        if process.poll() is not None:
+            break  # Exit the loop if the process has finished
+        else:
+            # The process is still running; you can perform additional checks here if needed
+            pass
+    # Wait for the output threads to finish
+    stdout_thread.join()
+    stderr_thread.join()
+
+    # Wait for the process to complete
+    process.wait()
+
+    return process.returncode
 
 ##############################################################################
 # SelfNet Training Functions
