@@ -22,7 +22,7 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 - **Model training from the GUI** – train/finetune nnU‑Net, CARE‑3D or SelfNet without code.
 - **Comprehensive and Automatic Results** – automatic generation of validation MIPs, 3D volumes, and comprehensive spatial/morphological statistics.
 - **Built‑in validation** – compare ground truth datasets to RESPAN outputs to validate quantification.
-- **Step-by-step tutorials** - view our introduction and tutorials for analysis and model training [here] (https://youtu.be/Q6zu6y5P6Mc)
+- **Step-by-step tutorials** - view our introduction and tutorials for analysis and model training [here](https://youtu.be/Q6zu6y5P6Mc)
 - **Stand‑alone or scriptable** – run the GUI on Windows or from a Python environment.
 - **Lossless compression** – gzip lossless compression of data ensures a minimal footprint for generated results and validation images.
 
@@ -58,7 +58,7 @@ If you need help getting started, please refer to our video tutorial. Chapters l
 <br>    
 1. **Download**  
    • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1) (if required, previous versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link))<br>
-   • RESPAN Analysis Settings file &nbsp;→&nbsp; [here] https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link
+   • RESPAN Analysis Settings file &nbsp;→&nbsp; [here](https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link) <br>
    • Pre‑trained models &nbsp;→&nbsp; see table below<br>
    • For testing we also provide example spinning disk confocal [datasets](https://drive.google.com/drive/folders/1EDVKGOotXsRbQdcGckADQu4zYjeQD9wH?usp=drive_link) with example [results](https://drive.google.com/drive/folders/1ExA2w5PdQw3_5Cfp6PPmwGp3_qwLbLgh?usp=drive_link) 
 3. **Install**  
