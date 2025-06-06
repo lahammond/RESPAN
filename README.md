@@ -45,17 +45,17 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 
 ## 🚀 Quick start (Windows GUI)
 
-If you need help getting started, please refer to our video tutorial with chapters linked below:
-    • [Introduction to RESPAN and Image Segmentation](https://www.youtube.com/watch?v=Q6zu6y5P6Mc)
-    • [Installing RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1513s)
-    • [Navigating the RESPAN GUI](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1787s)
-    • [Example use of RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2318s)
-    • [Understanding RESPAN Outputs](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2677s)
-    • [Training CARE Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3122s)
-    • [Training SelfNet Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3390s)
-    • [Using Restoration Models during RESPAN Analysis](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3515s)
-    • [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)
-    
+If you need help getting started, please refer to our video tutorial with chapters linked below:<br>
+    • [Introduction to RESPAN and Image Segmentation](https://www.youtube.com/watch?v=Q6zu6y5P6Mc)<br>
+    • [Installing RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1513s)<br>
+    • [Navigating the RESPAN GUI](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=1787s)<br>
+    • [Example use of RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2318s)<br>
+    • [Understanding RESPAN Outputs](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=2677s)<br>
+    • [Training CARE Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3122s)<br>
+    • [Training SelfNet Models in RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3390s)<br>
+    • [Using Restoration Models during RESPAN Analysis](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3515s)<br>
+    • [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)<br>
+<br>    
 1. **Download**  
    • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/drive/folders/1MUFsFDKPBON9v7A3ZRJSUd6qjPTuI9G1)
      if required, earlier versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link)
