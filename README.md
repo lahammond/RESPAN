@@ -36,8 +36,9 @@ Developed in collaboration with the Polleux Lab (Zuckerman Institute, Columbia U
 | RAM | 32 GB | 128–256 GB |
 | Storage | HDD | SSD |
 
-> *RESPAN likely works for NVIDIA GPUs with less than 8GB, but this has not been tested.
-> *RESPAN implements data chunking and tiling, but for some steps, larger images currently necessitate increased RAM requirements. 
+> *RESPAN likely works for NVIDIA GPUs with less than 8GB, but this has not been tested.<br>
+> *RESPAN implements data chunking and tiling, but for some steps, larger images currently necessitate increased RAM requirements. <br>
+> *See tabel below for further performance testing information.
 
 ---
 
@@ -148,3 +149,11 @@ Secondary environment:
 - Our latest model uses 3D spine cores and membranes to further improve accuracy in dense environments
 - Integration of Dask to remove resource limitations on processing large datasets
 - Improved efficiency in batch GPU mesh measurements, neck generation, and geodesic distance measurements
+
+---
+## Benchmark: Processing and Training Times by System Configuration
+
+| **System** | **CPU** | **RAM (GB)** | **GPU** | **Storage** | **CARE Training**<br>(10 epochs, min) | **SelfNet Training**<br>(2×10MB, 40 epochs, min) | **nnUNet (min)**<br>10MB | 100MB | 500MB | 1GB | 2.5GB | **RESPAN (min, GPU)**<br>10MB | 100MB | 500MB | 1GB | 2.5GB |
+|------------|---------|--------------|---------|-------------|---------------------------------------|--------------------------------------------------|----------------------------|--------|--------|------|--------|-----------------------------|--------|--------|------|--------|
+| **Mid-performance** | i9-11900K (8-core, 3.5 GHz) | 64 | RTX 3070 (8GB) | Patriot M.2 P300 1TB | 11.7 | 5 | 0.14 | 1.39 | 6.35 | 16 | 32.43 | 0.44 | 1.62 | 6.28 | 7.76 | 18.23 |
+| **High-performance** | Threadripper PRO (16-core, 4.0 GHz) | 256 | RTX 4090 (24GB) | Samsung M.2 SSD 1.92TB | 3.5 | 1.5 | 0.14 | 1.39 | 6.35 | 14 | 32.43 | 0.26 | 2.33 | 8.91 | 14.07 | 26.62 |
