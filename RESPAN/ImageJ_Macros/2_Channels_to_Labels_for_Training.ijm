@@ -17,7 +17,7 @@ run("Close All");
 //#@ boolean(label="Export Tif images :", description=".") TIFon
 
 start = getTime();
-setBatchMode(true);
+//setBatchMode(true);
 
 print("\\Clear");
 print(rawpath)
@@ -78,29 +78,10 @@ for (i = 0; i < lengthOf(filelist); i++) {
 			selectImage("Result of C6-Channels");
 			rename("C6-Channels");
 			run("Subtract...", "value=250 stack");
-		}
-		
-
-		if (MaxLabel >= 2) {
-			selectImage("C3-Channels");
-			run("Subtract...", "value=253 stack");
-		}
-		if (MaxLabel >= 3) {
-			selectImage("C4-Channels");
-			run("Subtract...", "value=252 stack");
-		}
-		if (MaxLabel >= 4) {
-			selectImage("C5-Channels");
-			run("Subtract...", "value=251 stack");
-		}
-		if (MaxLabel >= 5) {
-			selectImage("C6-Channels");
-			run("Subtract...", "value=250 stack");
-		}
-		if (MaxLabel >= 6) {
 			selectImage("C7-Channels");
 			run("Subtract...", "value=249 stack");
 		}
+	
 		
 		
 		if (MaxLabel >= 2) {
@@ -110,26 +91,30 @@ for (i = 0; i < lengthOf(filelist); i++) {
 		}
 		if (MaxLabel >= 3) {
 			imageCalculator("Add create stack", "labels","C4-Channels");
+			close("labels");
 			selectImage("Result of labels");
 			rename("labels");
 		}
 		if (MaxLabel >= 4) {
 			imageCalculator("Add create stack", "labels","C5-Channels");
+			close("labels");
 			selectImage("Result of labels");
 			rename("labels");
 		}
 		if (MaxLabel >= 5) {
 			imageCalculator("Add create stack", "labels","C6-Channels");
+			close("labels");
 			selectImage("Result of labels");
 			rename("labels");
 		}
 		if (MaxLabel >= 6) {
 			imageCalculator("Add create stack", "labels","C7-Channels");
+			close("labels");
 			selectImage("Result of labels");
 			rename("labels");
 		}
 
-		
+		run("glasbey_on_dark");
 		save(new_labels_dir + filelist[i]);
 		
 		
