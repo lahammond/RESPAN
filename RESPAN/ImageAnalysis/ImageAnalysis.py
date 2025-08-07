@@ -523,8 +523,8 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         # neck_results = analyze_spine_necks_batch(connected_necks, logger, [settings.input_resZ,  settings.input_resXY,  settings.input_resXY])
         # neck_results.to_csv(locations.tables + 'Detected_necks_mesh_measurements_' + filename + '.csv', index=False)
 
-        if len(spine_table) == 0:
-            logger.info(f"  *No spines were analyzed for this image")
+        if len(spine_table) == 0 and np.max(labeled_dendrites) == 0:
+            logger.info(f"  *No spines or dendrites were analyzed for this image")
 
         else:
             if settings.save_val_data == True:
@@ -3869,8 +3869,8 @@ def analyze_spines_4D(settings, locations, log, logger):
         dendrite_volume = np.sum(dendrites[t,:,:,:] ==1)
 
 
-        if len(spine_table) == 0:
-            logger.info(f"  *No spines were analyzed for this image.")
+        if len(spine_table) == 0 and np.max(dendrites[t,:,:,:]) == 0:
+            logger.info(f"  *No spines or dendrites were analyzed for this image.")
 
         else:
             #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+filename, 'float', settings)
