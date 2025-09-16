@@ -57,10 +57,10 @@ If you need help getting started, please refer to our video tutorial. Chapters l
     - [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)<br>
 <br>    
 1. **Download**  
-   • Latest RESPAN release &nbsp;→&nbsp; [Windows Application](https://drive.google.com/file/d/1tmAhfl7yQdWvO_Dwt2Sd_tCrKHno4pVW/view?usp=drive_link) (if required, previous versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link))<br>
+   • Latest RESPAN release (RESPAN v1.0 - 9/16/2025) &nbsp;→&nbsp; [Windows Application](https://drive.google.com/file/d/13dLMsuLn4oUEMzvBFJBSYXKujXiBHsLb/view?usp=drive_link) (if required, previous versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link))<br>
    • RESPAN Analysis Settings file &nbsp;→&nbsp; [here](https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link) <br>
    • Pre‑trained models &nbsp;→&nbsp; see Segmentation Models table below<br>
-   • For testing we also provide example spinning disk confocal [datasets](https://drive.google.com/drive/folders/1EDVKGOotXsRbQdcGckADQu4zYjeQD9wH?usp=drive_link) with example [results](https://drive.google.com/drive/folders/1ExA2w5PdQw3_5Cfp6PPmwGp3_qwLbLgh?usp=drive_link) 
+   • For testing, we also provide example spinning disk confocal [datasets](https://drive.google.com/drive/folders/1EDVKGOotXsRbQdcGckADQu4zYjeQD9wH?usp=drive_link) with example [results](https://drive.google.com/drive/folders/1ExA2w5PdQw3_5Cfp6PPmwGp3_qwLbLgh?usp=drive_link) 
 3. **Install**  
    ▸ Unzip RESPAN.zip with [7zip](https://www.7-zip.org/)<br>
    ▸ Double‑click RESPAN.exe (first run may require 1-2 min to initialize)<br>
@@ -117,7 +117,7 @@ Detailed protocols – including data organisation and annotation tips – are i
 | Segmentation Model | Download | Modality | Resolution | Annotations | Details |
 | ------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
 | Model 1A | [download](https://drive.google.com/drive/folders/1j9XQi4x1-IsRvln_-dzR-vF94cuV35RZ?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines, dendrites, and soma | 224 datasets, including restored and raw data and additional augmentation |
-| Model 2B | [download](https://drive.google.com/drive/folders/1LTEO4aApPfTeTDEECMC-QJCpwWkL_C6w?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines core & shell, dendrites, axons, and soma | 44 datasets, including restored and raw data and additional augmentation |
+| Model 1B | [download](https://drive.google.com/drive/folders/1LTEO4aApPfTeTDEECMC-QJCpwWkL_C6w?usp=drive_link) | Spinning disk and Airyscan/laser scanning confocal microscopy | 65 x 65 x 150nm | spines core & shell, dendrites, axons, and soma | 44 datasets, including restored and raw data and additional augmentation |
 | Model 2 | [download](https://drive.google.com/drive/folders/1MTSU7acFDZOUs9q1t_0gwU9DIbckYugi?usp=drive_link) | Spinning disk confocal microscopy  | 65 x 65 x 65nm | spines, necks, dendrites, and soma | isotropic model, 7 datasets, no augmentation |
 | Model 3 |  [download](https://drive.google.com/drive/folders/1-KQc-Tzpk1dn3fgAln-KJrIIwM6amVFG?usp=drive_link) |Two-photon in vivo confocal microscopy  | 102 x 102 x 1000nm | spines and dendrites | 908 datasets, additional augmentation |
 
