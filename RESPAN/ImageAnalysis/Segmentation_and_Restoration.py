@@ -724,27 +724,45 @@ def reassemble_patch_predictions(nn_output_dir, nn_input_dir,
         mapping = json.load(f)
 
     for entry in mapping:
-        base = entry["base"]
+        base = entry["base"]  # e.g., name_0000
         base_out = base[:-5] if base.endswith("_0000") else base
-        shape = tuple(entry["shape"])
+        shape = tuple(entry["shape"])  # (Z,Y,X)
         nZ, nY, nX = entry["nZ"], entry["nY"], entry["nX"]
         psize = tuple(entry["patch_size"])
         stride = tuple(entry["stride"])
 
-        # pass 1 ─ find max label
-        max_lab, idx = 0, 0
-        for _ in range(nZ * nY * nX):
+        # discover available tiles for this base
+        total_expected = nZ * nY * nX
+        have = []
+        for idx in range(total_expected):
             p = os.path.join(nn_output_dir, f"{base}_patch{idx:04d}.tif")
             if os.path.exists(p):
-                m = imread(p).max()
-                if m > max_lab:
-                    max_lab = m
-            idx += 1
+                have.append(p)
+            else:
+                # tolerate exporter that kept _0000 on filename
+                p_alt = os.path.join(nn_output_dir, f"{base}_patch{idx:04d}_0000.tif")
+                if os.path.exists(p_alt):
+                    have.append(p_alt)
 
-        n_classes = int(max_lab) + 1
+        if len(have) == 0:
+            logger.error(f"    No prediction tiles found for base={base}. "
+                         f"Did earlier cleanup remove them? Skipping.")
+            # write explicit zeros to make the failure obvious downstream
+            imwrite(os.path.join(final_dir, f"{base_out}.tif"),
+                    np.zeros(shape, dtype=np.uint16), compression="zlib")
+            continue
+
+        # pass 1 ─ determine class count
+        max_lab = 0
+        for p in have[:min(8, len(have))]:
+            m = imread(p).max()
+            if m > max_lab:
+                max_lab = int(m)
+        n_classes = max(2, max_lab + 1)
+
         counts = np.zeros((n_classes, *shape), dtype=np.uint16)
 
-        # pass 2 ─ vote accumulation
+        # pass 2 ─ accumulate votes
         idx = 0
         for z in range(nZ):
             z0 = z * stride[0]
@@ -753,22 +771,32 @@ def reassemble_patch_predictions(nn_output_dir, nn_input_dir,
                 for x in range(nX):
                     x0 = x * stride[2]
                     p = os.path.join(nn_output_dir, f"{base}_patch{idx:04d}.tif")
+                    if not os.path.exists(p):
+                        p = os.path.join(nn_output_dir, f"{base}_patch{idx:04d}_0000.tif")
                     if os.path.exists(p):
                         patch = imread(p)
+                        z1 = min(z0 + psize[0], shape[0])
+                        y1 = min(y0 + psize[1], shape[1])
+                        x1 = min(x0 + psize[2], shape[2])
+                        sub = patch[:z1 - z0, :y1 - y0, :x1 - x0]
                         for c in range(n_classes):
-                            mask = patch == c
-                            if mask.any():
-                                counts[c,
-                                z0:z0 + psize[0],
-                                y0:y0 + psize[1],
-                                x0:x0 + psize[2]] += mask
+                            m = (sub == c)
+                            if m.any():
+                                counts[c, z0:z1, y0:y1, x0:x1] += m
                     idx += 1
 
         seg = np.argmax(counts, axis=0).astype(np.uint16)
         out_path = os.path.join(final_dir, f"{base_out}.tif")
         imwrite(out_path, seg, compression="zlib")
-        logger.info(f"    Re-assembled: {base_out}.tif")
-        for f in os.listdir(nn_output_dir):
-            if f.endswith(".tif") and "_patch" in f:
-                os.remove(os.path.join(nn_output_dir, f))
+        logger.info(f"    Re-assembled: {base_out}.tif  [tiles: {len(have)}/{total_expected}, classes: {n_classes}]")
+
+        # cleanup only this base's tiles
+        for idx in range(total_expected):
+            for suffix in (".tif", "_0000.tif"):
+                p = os.path.join(nn_output_dir, f"{base}_patch{idx:04d}{suffix}")
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
 

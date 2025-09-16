@@ -4,8 +4,8 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'RESPAN'
-__version__   = '0.9.99'
-__date__      = "6 June, 2025"
+__version__   = '1.0.00'
+__date__      = "15 September, 2025"
 __author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2025 by Luke Hammond'
@@ -14,8 +14,8 @@ __download__  = 'http://www.github.com/lahmmond/RESPAN'
 
 
 respan_paper =  ("\nPlease cite the following paper when using RESPAN:"
-                    "\nRESPAN: an accurate, unbiased and automated pipeline for analysis of dendritic morphology and dendritic spine mapping"
-                    "\nSergio B. Garcia, Alexa P. Schlotter, Daniela Pereira, Franck Polleux, Luke A. Hammond"
+                    "\nA deep learning pipeline for accurate and automated restoration, segmentation, and quantification of dendritic spines"
+                    "\nSergio Bernal-Garcia, Alexa P. Schlotter, Daniela Pereira, Franck Polleux, Luke A. Hammond"
                     "\ndoi: https://doi.org/10.1101/2024.06.06.597812\n")
 
 self_net_paper =  ("\nPlease cite the following paper when using Self-Net:"
@@ -189,7 +189,7 @@ else:
     global_respan_env = 'respan99'
 
     elastix_path = "C:/Program Files/elastix_5_2/"
-    elastix_params = "D:/Dropbox/Github/spine-analysis/RESPAN/Elastix_params"
+    elastix_params = "D:/Dropbox/Github/RESPAN/RESPAN/Elastix_params"
 
 
 
@@ -548,7 +548,7 @@ class RESPANAnalysis(QWidget):
             for option in model_options:
                 self.model_type.addItem(option)
 
-            self.model_type.setFixedWidth(300)
+            self.model_type.setFixedWidth(400)
 
 
             if global_GUI_app == False:

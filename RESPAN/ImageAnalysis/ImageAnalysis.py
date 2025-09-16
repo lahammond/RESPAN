@@ -272,11 +272,11 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
             f"\n    If using Dask, OME-Zarr files can be viewed in a Zarr Viewer. Otherwise, to generate 3D validation datasets, please isolate specific regions of the dataset and process separately.")
         #logger.info(
           #  f"    Due to the size of this image volume, neck generation features are currently unavailable.")
-        settings.neck_analysis = False
+        #settings.neck_analysis = False
         settings.mesh_analysis = True
         settings.save_val_data = False
     else:
-        settings.neck_analysis = True
+        #settings.neck_analysis = True
         settings.mesh_analysis = True
 
     if settings.model_type == 1:
@@ -378,7 +378,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         time_neck_connection = time.time()
 
         # disable neck analysis for very large datasets
-        if settings.neck_analysis == False:
+        if settings.neck_generation == False:
             logger.info(f"     Image shape is {spines_filtered.shape}. Neck analysis has been disabled.")
             connected_necks = np.zeros_like(spines_filtered)
         else:
@@ -465,13 +465,13 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         # logger.info("\n    Calculating dendrite statistics...")
         # originally whole neuron stats but now calculating dendrite specific
 
-        logger.info("     Calculating neuron statistics...")
+        logger.info("    Calculating neuron statistics...")
         neuron_length = np.sum(skeleton == 1)
         neuron_volume = np.sum(dendrites_mask == 1)
 
         del dendrites_mask
 
-        logger.info("     Calculating dendrite statistics...")
+        logger.info("    Calculating dendrite statistics...")
         # get dendrite lengths and volumes as dictoinaries
         dendrite_lengths, dendrite_volumes, skeleton_coords, labeled_skeletons = calculate_dendrite_length_and_volume_fast(
             labeled_dendrites, skeleton, logger)
@@ -479,7 +479,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         # finished calculating dendrite statistics
         logger.info("      Complete.")
 
-        logger.info("     Calculating spine dendrite ID and geodesic distance...")
+        logger.info("    Calculating spine dendrite ID and geodesic distance...")
         if np.max(soma) == 0:
             spine_dendID_and_geodist, geodesic_distance_image = calculate_dend_ID_and_geo_distance(labeled_dendrites,
                                                                                                    spines_filtered,
@@ -500,10 +500,10 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         # save spine dendrite ID and geodesic distance as csv using pands
         # spine_dendID_and_geodist.to_csv(locations.tables + 'Detected_spines_dendrite_ID_and_geodesic_distance_' + filename + '.csv', index=False)
 
-        logger.info("      Complete.")
+        logger.info("     Complete.")
 
         # analyze whole spines
-        logger.info("\n     Performing additional mesh measurements on spines in batches on GPU...")
+        logger.info("\n    Performing additional mesh measurements on spines in batches on GPU...")
 
         # combine connected_necks and Spines_filtered
         # print max id for spines fileterd and connected_necks
@@ -523,8 +523,10 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         # neck_results = analyze_spine_necks_batch(connected_necks, logger, [settings.input_resZ,  settings.input_resXY,  settings.input_resXY])
         # neck_results.to_csv(locations.tables + 'Detected_necks_mesh_measurements_' + filename + '.csv', index=False)
 
-        if len(spine_table) == 0:
-            logger.info(f"  *No spines were analyzed for this image")
+        ##2025_09 - labeled_dendrites check to ensure saving for dendrite only images - but may prolong processing time or cause downstream issues
+        # confirm if this is most elegant solution
+        if len(spine_table) == 0 and np.max(labeled_dendrites) == 0:
+            logger.info(f"  *No spines or dendrites were analyzed for this image")
 
         else:
             if settings.save_val_data == True:
@@ -3869,8 +3871,8 @@ def analyze_spines_4D(settings, locations, log, logger):
         dendrite_volume = np.sum(dendrites[t,:,:,:] ==1)
 
 
-        if len(spine_table) == 0:
-            logger.info(f"  *No spines were analyzed for this image.")
+        if len(spine_table) == 0 and np.max(dendrites[t,:,:,:]) == 0:
+            logger.info(f"  *No spines or dendrites were analyzed for this image.")
 
         else:
             #neuron_MIP = create_mip_and_save_multichannel_tiff([neuron, spines, spines_filtered, dendrites, skeleton, dendrite_distance], locations.MIPs+"MIP_"+filename, 'float', settings)
