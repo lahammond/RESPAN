@@ -1,0 +1,63 @@
+name: tests
+
+# CPU-only unit tests. RESPAN's pipeline requires an NVIDIA GPU, so CI cannot
+# run the full analysis — it runs the subset of tests that exercise pure-CPU
+# logic on small synthetic volumes. GPU tests are marked `gpu` and deselected
+# here; they are run locally on GPU hardware before a release.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'images/**'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-tests:
+    name: CPU unit tests (Python ${{ matrix.python-version }})
+    # Pinned, NOT ubuntu-latest. Python 3.9 has no Ubuntu 26.04 build in
+    # actions/python-versions, so when ubuntu-latest flips to 26.04 the 3.9 leg
+    # would start failing with no change to this repo. 3.9 is RESPAN's floor
+    # (TensorFlow <2.11 / CARE), so the runner is pinned to its last supported
+    # image rather than tracking latest.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+
+      - name: Confirm the GPU stack is absent
+        # Guards the point of this job: if CuPy ever leaks into the CI image the
+        # deselection below would silently stop being meaningful.
+        run: >
+          python -c "import importlib.util;
+          assert importlib.util.find_spec('cupy') is None, 'cupy unexpectedly present in CI';
+          print('cupy absent, as expected - GPU paths will not be exercised')"
+
+      - name: Run CPU-safe unit tests
+        run: pytest -m "not gpu" -v --durations=10
