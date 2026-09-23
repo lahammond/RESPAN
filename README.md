@@ -1,4 +1,15 @@
 # RESPAN: Restoration Enhanced SPine And Neuron Analysis.
+
+[![Tests](https://github.com/lahammond/RESPAN/actions/workflows/tests.yml/badge.svg)](https://github.com/lahammond/RESPAN/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/lahammond/RESPAN)](https://github.com/lahammond/RESPAN/releases)
+[![Python](https://img.shields.io/badge/python-3.9-3776AB)](#%EF%B8%8F-advanced-usage-creating-environments-for-use-in-python)
+[![CUDA](https://img.shields.io/badge/CUDA-11.8-76B900)](#-system-requirements)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-555555)](#-system-requirements)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+[![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.crmeth.2025.101179-1a7f37)](https://doi.org/10.1016/j.crmeth.2025.101179)
+
+End-to-end, GPU-accelerated restoration, segmentation and quantification of dendrites and dendritic spines in 3D fluorescence microscopy.
+
 <p align="center">
   <img src="images/Panel 1.jpg" alt="RESPAN" width="600">
 </p>
@@ -68,7 +79,7 @@ If you need help getting started, please refer to our video tutorial. Chapters l
     - [Training an nnU-Net Model using RESPAN](https://www.youtube.com/watch?v=Q6zu6y5P6Mc&t=3768s)<br>
 <br>    
 1. **Download**  
-   • Latest RESPAN release (RESPAN v1.0 - 9/16/2025) &nbsp;→&nbsp; [Windows Application](https://drive.google.com/file/d/13dLMsuLn4oUEMzvBFJBSYXKujXiBHsLb/view?usp=drive_link) (if required, previous versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link))<br>
+   • Latest RESPAN release (RESPAN v1.5.1 - 9/20/2026) &nbsp;→&nbsp; [Windows Application](https://drive.google.com/file/d/1qrH4UrFnml-hiyVIaQyoVBQmW2kQWV03/view?usp=drive_link) (if required, previous versions of RESPAN can be found in our archive [here](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link))<br>
    • RESPAN Analysis Settings file &nbsp;→&nbsp; [here](https://drive.google.com/file/d/1sZoBfViD62nNu-9FYWtYMHtLq6Hwjwhk/view?usp=drive_link) <br>
    • Pre‑trained models &nbsp;→&nbsp; see Segmentation Models table below<br>
    • For testing, we also provide example spinning disk confocal [datasets](https://drive.google.com/drive/folders/1EDVKGOotXsRbQdcGckADQu4zYjeQD9wH?usp=drive_link) with example [results](https://drive.google.com/drive/folders/1ExA2w5PdQw3_5Cfp6PPmwGp3_qwLbLgh?usp=drive_link) 
@@ -229,6 +240,12 @@ Secondary environment:
 3. cd to that repo dir then pip install -e ./nnUNet
 
 </details>
+
+---
+## 📦 Previous releases
+
+• RESPAN v1.0 (9/16/2025) &nbsp;→&nbsp; [Windows Application](https://drive.google.com/file/d/13dLMsuLn4oUEMzvBFJBSYXKujXiBHsLb/view?usp=drive_link)<br>
+• All earlier versions &nbsp;→&nbsp; [archive folder](https://drive.google.com/drive/folders/1RMCacdm_MheJ31bbU6NSI51Ho4pHPXch?usp=drive_link)
 
 ---
 ## 🛠️ Future Developments

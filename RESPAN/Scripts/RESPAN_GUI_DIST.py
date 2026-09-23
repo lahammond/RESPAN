@@ -4,8 +4,8 @@ Created on Fri Jul 21 11:16:58 2023
 
 """
 __title__     = 'RESPAN'
-__version__   = '1.5.00'
-__date__      = "20 April, 2026"
+__version__   = '1.5.01'
+__date__      = "20 September, 2026"
 __author__    = 'Luke Hammond <luke.hammond@osumc.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2025 by Luke Hammond'
@@ -74,6 +74,8 @@ import logging
 import shutil
 from datetime import datetime
 import subprocess
+import argparse
+from types import SimpleNamespace
 import json
 import threading
 import re
@@ -140,7 +142,7 @@ else:
             f"Dev env '{DEV_ENV}' not found. Searched: "
             + ", ".join(str(r / DEV_ENV) for r in _candidate_roots))
     PY_EXE = VENV_DIR / "python.exe"
-    INSTALL_DIR = Path(r'C:\Users\Luke_H')
+    INSTALL_DIR = Path.home()
     SELFNET_TRAINING_SCRIPT = APP_DIR / "SelfNet_Model_Training.py"
     SELFNET_INFERENCE_SCRIPT = APP_DIR / "SelfNet_Inference.py"
     clean_launcher = APP_DIR / "clean_launcher.py"
@@ -154,6 +156,138 @@ nnunet_plan_bat = VENV_DIR / "Scripts" / "nnUNetv2_plan_and_preprocess.bat"
 nnunet_train_bat = VENV_DIR / "Scripts" / "nnUNetv2_train.bat"
 
 _SENTINEL = APP_DIR / ".nnunet_ok"
+
+
+def _settings_dirs():
+    """Folders the per-tab GUI settings pickles are saved to, in priority order.
+
+    Next to the exe (frozen) / this script (source) first, so dropping a
+    settings pickle beside the executable pre-fills the GUI; then the user's
+    local app-data folder, which stays writable when the app is installed
+    under Program Files.
+    """
+    dirs = [str(APP_DIR)]
+    local = os.environ.get('LOCALAPPDATA')
+    if local:
+        dirs.append(os.path.join(local, 'RESPAN'))
+    return dirs
+
+
+def _load_settings(name):
+    """Return the most recently saved settings dict for pickle `name`, or None.
+
+    Candidates are the save folders only (next to the exe, then app-data).
+    The current working directory, where releases before v1.5 wrote the
+    pickle, is deliberately NOT consulted: unpickling a file from whatever
+    folder the app happens to be launched from would execute that file's
+    contents. The newest readable file wins, so a save that had to fall back
+    to app-data is what the next start restores; an unreadable or corrupt
+    file is skipped, never fatal. These pickles are RESPAN's own GUI-state
+    files written by this application into its own folders (pre-existing
+    on-disk format, kept for compatibility).
+    """
+    candidates = []
+    for base in _settings_dirs():
+        path = os.path.join(base, name)
+        try:
+            if os.path.isfile(path):
+                candidates.append((os.path.getmtime(path), path))
+        except OSError:
+            continue
+    for _, path in sorted(candidates, reverse=True):
+        try:
+            with open(path, 'rb') as f:
+                return pickle.load(f)
+        except Exception:
+            continue
+    return None
+
+
+def _save_settings(name, variables_dict, log_display=None):
+    """Persist a tab's settings dict as pickle `name`. Never raises.
+
+    The settings pickle used to be written with a bare relative filename, i.e.
+    into the current working directory. Launching the packaged app from a
+    shell whose cwd is not writable made the Run button's save raise
+    PermissionError inside a Qt slot, which PyQt turns into a silent abort of
+    the whole application before the analysis even starts. A failed save is
+    now a warning line, never a crash.
+    """
+    for base in _settings_dirs():
+        try:
+            os.makedirs(base, exist_ok=True)
+            path = os.path.join(base, name)
+            with open(path, 'wb') as f:
+                pickle.dump(variables_dict, f)
+            return path
+        except OSError:
+            continue
+    warning = f"  Warning: could not save GUI settings ({name}); continuing without saving them."
+    if sys.__stderr__ is not None:
+        try:
+            sys.__stderr__.write(warning + '\n')
+        except Exception:
+            pass
+    if log_display is not None:
+        # Deferred: every Run button calls get_variables() and then
+        # run_function(), whose first act is log_display.clear(). A zero-delay
+        # timer appends after that, so the warning is actually seen.
+        try:
+            QTimer.singleShot(0, lambda: log_display.append(warning))
+        except Exception:
+            pass
+    return None
+
+
+def _install_crash_reporter():
+    """Route uncaught exceptions to a log file and a dialog instead of a silent abort.
+
+    PyQt5 calls qFatal() when a Python exception escapes a slot or a QThread.run
+    and sys.excepthook is still the default, which kills the windowed
+    application with exception code 0xc0000409 in Qt5Core.dll and no message
+    anywhere (the user sees the window vanish). With a custom hook installed
+    PyQt calls the hook instead and the application keeps running.
+    """
+    import traceback
+
+    def hook(exc_type, exc, tb):
+        text = ''.join(traceback.format_exception(exc_type, exc, tb))
+        now = datetime.now()
+        entry = (f"\n===== {now.strftime('%Y-%m-%d %H:%M:%S')}  RESPAN {__version__}  "
+                 f"unhandled exception =====\n{text}")
+        path = None
+        for base in _settings_dirs():
+            try:
+                os.makedirs(base, exist_ok=True)
+                candidate = os.path.join(base, 'RESPAN_crash_' + now.strftime('%Y-%m-%d') + '.log')
+                # Append: several reports in one second, or from several
+                # instances, must never overwrite each other.
+                with open(candidate, 'a', encoding='utf-8') as f:
+                    f.write(entry)
+                path = candidate
+                break
+            except OSError:
+                continue
+        stream = sys.__stderr__
+        if stream is not None:
+            try:
+                stream.write(text)
+            except Exception:
+                pass
+        try:
+            from PyQt5.QtCore import QThread
+            from PyQt5.QtWidgets import QApplication, QMessageBox
+            app = QApplication.instance()
+            if app is not None and QThread.currentThread() is app.thread():
+                QMessageBox.critical(
+                    None, "RESPAN error",
+                    "An unexpected error occurred. RESPAN will keep running, but the current action did not complete.\n\n"
+                    + (f"Details appended to:\n{path}\n\n" if path else "")
+                    + text[-1800:])
+        except Exception:
+            pass
+
+    sys.excepthook = hook
 
 NNUNET_INSTALL = "nnUNet_install"                # name of the nnUNet install dir
 
@@ -194,8 +328,22 @@ if getattr(sys, 'frozen', False):
 
     #os.environ['LD_LIBRARY_PATH'] = internal_path + os.pathsep + os.environ.get('LD_LIBRARY_PATH', '')
     cuda_path = os.path.abspath(os.path.join(base_path, 'cuda'))
+    cuda_bin = os.path.join(cuda_path, 'bin')
     os.environ['CUDA_PATH'] = cuda_path
-    os.environ['PATH'] = cuda_path + os.pathsep + os.environ['PATH']
+    # 2026-09-19: the bundled CUDA DLLs live in cuda/bin ONLY since the v1.5
+    # slim spec (v1.0 carried a second copy in cuda/). NVRTC loads its
+    # nvrtc-builtins64_*.dll through the ordinary DLL search, i.e. PATH, so
+    # cuda/bin must be on PATH or every CuPy kernel compile fails with
+    # "failed to open nvrtc-builtins64_112.dll" (seen on the first GUI run of
+    # the v1.5 build; invisible when the exe inherits a shell PATH that
+    # already carries a CUDA bin folder). add_dll_directory covers loads made
+    # through Python's own LoadLibraryEx search as well.
+    os.environ['PATH'] = cuda_bin + os.pathsep + cuda_path + os.pathsep + os.environ['PATH']
+    if hasattr(os, 'add_dll_directory') and os.path.isdir(cuda_bin):
+        try:
+            os.add_dll_directory(cuda_bin)
+        except OSError:
+            pass
     print(f"CUDA_PATH: {os.environ['CUDA_PATH']}")
     #print("Current PATH: ", os.environ['PATH'])
 
@@ -226,7 +374,7 @@ else:
             break
 
     elastix_path = "C:/Program Files/elastix_5_2/"
-    elastix_params = "D:/Dropbox/Github/RESPAN/RESPAN/Elastix_params"
+    elastix_params = str((Path(__file__).resolve().parent.parent / "Elastix_params"))
 
 
 
@@ -307,6 +455,12 @@ class Logger:
     def error(self, message, exc_info=False):
         self.logger.error(message, exc_info=exc_info)
 
+    def warning(self, message):
+        self.logger.warning(message)
+
+    def debug(self, message):
+        self.logger.debug(message)
+
     def set_log_file(self, file_path):
         # If there was a previous FileHandler, remove it
         if self.file_handler is not None:
@@ -368,6 +522,57 @@ def run_external_script_prev(script_path: str,
         print("training script exited with code %s", proc.returncode)
 
 
+def nnunet_sentinel_ok() -> bool:
+    """Check if sentinel file exists and contains the correct app directory"""
+    try:
+        return _SENTINEL.read_text(encoding="utf-8").strip() == str(APP_DIR)
+    except FileNotFoundError:
+        return False
+
+def ensure_nnunet_installed(logger):
+    """Install nnUNet using the embedded Python if not already done"""
+    if nnunet_sentinel_ok():
+        return  # Already installed and path matches
+
+    #logger.info("Installing nnUNet in embedded environment...")
+    logger.info(f"First time running RESPAN, please allow a few minutes to complete installation...")
+
+    # Subprocess env: override PIP_REQUIRE_VIRTUALENV in case the host
+    # machine has it set (pip will otherwise refuse with "Could not find
+    # an activated virtualenv"). The bundled respan env is fully self-
+    # contained and doesn't need to appear "activated" to pip.
+    import os as _os
+    _pip_env = _os.environ.copy()
+    _pip_env['PIP_REQUIRE_VIRTUALENV'] = 'false'
+    # Also tell pip to NOT read user/global pip config files that might
+    # impose additional constraints (e.g. --require-venv, index-url).
+    _pip_env['PIP_CONFIG_FILE'] = _os.devnull
+
+    try:
+        # Simple pip install using the embedded Python
+        cmd = [
+            str(PY_EXE), "-m", "pip",
+            "install", "-e", str(SRC_DIR),
+            "--no-deps", "--force-reinstall"
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            env=_pip_env,
+        )
+
+        # Mark as installed with current APP_DIR path
+        _SENTINEL.write_text(str(APP_DIR), encoding="utf-8")
+
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to install nnUNet: {e.stderr}")
+        raise
+
+
 class EnvSetup(QThread):
     finished_signal = pyqtSignal(bool, str)
 
@@ -399,55 +604,10 @@ class EnvSetup(QThread):
             self.finished_signal.emit(False, f"Error: {str(e)}")
 
     def _sentinel_ok(self) -> bool:
-        """Check if sentinel file exists and contains the correct app directory"""
-        try:
-            return _SENTINEL.read_text(encoding="utf-8").strip() == str(APP_DIR)
-        except FileNotFoundError:
-            return False
+        return nnunet_sentinel_ok()
 
     def _ensure_nnunet_installed(self):
-        """Install nnUNet using the embedded Python if not already done"""
-        if self._sentinel_ok():
-            return  # Already installed and path matches
-
-        #self.logger.info("Installing nnUNet in embedded environment...")
-        self.logger.info(f"First time running RESPAN, please allow a few minutes to complete installation...")
-
-        # Subprocess env: override PIP_REQUIRE_VIRTUALENV in case the host
-        # machine has it set (pip will otherwise refuse with "Could not find
-        # an activated virtualenv"). The bundled respan env is fully self-
-        # contained and doesn't need to appear "activated" to pip.
-        import os as _os
-        _pip_env = _os.environ.copy()
-        _pip_env['PIP_REQUIRE_VIRTUALENV'] = 'false'
-        # Also tell pip to NOT read user/global pip config files that might
-        # impose additional constraints (e.g. --require-venv, index-url).
-        _pip_env['PIP_CONFIG_FILE'] = _os.devnull
-
-        try:
-            # Simple pip install using the embedded Python
-            cmd = [
-                str(PY_EXE), "-m", "pip",
-                "install", "-e", str(SRC_DIR),
-                "--no-deps", "--force-reinstall"
-            ]
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                env=_pip_env,
-            )
-
-            # Mark as installed with current APP_DIR path
-            _SENTINEL.write_text(str(APP_DIR), encoding="utf-8")
-
-
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"Failed to install nnUNet: {e.stderr}")
-            raise
-
+        ensure_nnunet_installed(self.logger)
 
 
 class Splash(QSplashScreen):
@@ -617,6 +777,16 @@ class RESPANAnalysis(QWidget):
             model_options = ["Spines, Dendrites, and Soma (original)", "Dendrites and Soma Only", "Spines, Necks, Dendrites, and Soma", "Spines, Necks, Dendrites, Soma, and Axons (2025)"]
             for option in model_options:
                 self.model_type.addItem(option)
+
+            # 2026-09-20: start on the CURRENT scheme, not the oldest one. A
+            # QComboBox defaults to index 0, which left every fresh install on
+            # "Spines, Dendrites, and Soma (original)" - three model generations
+            # behind the bundled Dataset226. Looked up by name so reordering
+            # model_options cannot silently change the default. A saved
+            # <tab>GUI.pkl still wins: restore_variables runs later and calls
+            # setCurrentIndex with the user's stored choice.
+            self.model_type.setCurrentIndex(
+                model_options.index("Spines, Necks, Dendrites, Soma, and Axons (2025)"))
 
             self.model_type.setFixedWidth(400)
 
@@ -1068,8 +1238,9 @@ class RESPANAnalysis(QWidget):
 
             # Retrieve individual variables from the dictionary
             try:
-                with open('parametersanalysisGUI.pkl', 'rb') as f:
-                    variables_dict = pickle.load(f)
+                variables_dict = _load_settings('parametersanalysisGUI.pkl')
+                if variables_dict is None:
+                    raise FileNotFoundError('parametersanalysisGUI.pkl')  # handled below exactly as before
 
                 # retreive
                 if global_GUI_app == False:
@@ -1308,6 +1479,9 @@ class RESPANAnalysis(QWidget):
         dendrite_repair = self.dendrite_repair.isChecked()
         dendrite_repair_max_dist_um = str(self.dendrite_repair_max_dist_um.text())
         detect_multi_head_spines = self.detect_multi_head_spines.isChecked()
+        # 2026-09-18: was missing, so every GUI Run click raised NameError in
+        # this slot (the dict below references it) and PyQt aborted the app.
+        keep_partial_spines = self.keep_partial_spines.isChecked()
         save_int_data = self.save_intermediate.isChecked()
         dask_enabled = self.dask_enabled.isChecked()
         nnUNet_patching = self.nnUNet_patching.isChecked()
@@ -1362,8 +1536,7 @@ class RESPANAnalysis(QWidget):
 
 
         # Save the dictionary to a pickle file
-        with open('parametersanalysisGUI.pkl', 'wb') as f:
-            pickle.dump(variables_dict, f)
+        _save_settings('parametersanalysisGUI.pkl', variables_dict, getattr(self, 'log_display', None))
 
 
 
@@ -1484,7 +1657,13 @@ class RESPANAnalysis(QWidget):
         directory =  directory + "/"
 
         # --- Path robustness checks ---
-        for label, path in [("Data directory", directory), ("Model directory", model_dir)]:
+        # Spaces in the MODEL folder are only logged: nnU-Net
+        # is launched with the path quoted and runs fine from e.g. "G:/My Drive";
+        # the data folder keeps the dialog because outputs and tools are written
+        # and launched under it.
+        if ' ' in model_dir:
+            self.log_display.append(f"  Note: model directory path contains spaces: {model_dir}")
+        for label, path in [("Data directory", directory)]:
             if ' ' in path:
                 reply = QMessageBox.warning(self, "Path Contains Spaces",
                     f"{label} path contains spaces:\n{path}\n\n"
@@ -1576,6 +1755,139 @@ class RESPANAnalysis(QWidget):
         self.logger.info(message)
         self.progress.setValue(self.progress.maximum())
         self.progress.setVisible(False)
+
+
+def apply_run_parameters(settings, locations, p, logger):
+    """Wire one run's parameters onto settings/locations and log them.
+
+    Shared by the GUI (AnalysisWorker passes itself as p) and the headless
+    --cli path (a SimpleNamespace carrying the same attribute names), so both
+    entry points configure the pipeline from one piece of code. Module-level
+    globals (elastix paths, bundled env paths, PY_EXE, base_path) are read
+    directly, exactly as the worker did before this block was extracted.
+    """
+    #update locations for elastix
+    locations.elastix_path = elastix_path
+    locations.elastix_params = elastix_params
+    locations.elastix_temp = locations.nnUnet_input + "/temp_elastix"
+    
+    
+    #Modify specific parameters and settings:
+    settings.save_intermediate_data = p.save_intermediate
+    settings.dask_enabled = p.dask_enabled
+    settings.save_val_data = p.save_validation
+    settings.neuron_seg_model_path = p.model_dir
+    
+    if p.use_yaml_res == False:
+        settings.input_resXY = p.inputxy
+        settings.input_resZ = p.inputz
+        settings.model_resXY = p.modelxy
+        settings.model_resZ = p.modelz
+    
+    settings.nnUnet_type = '3d_fullres'
+    settings.nnUnet_conda_path = global_conda_path
+    settings.nnUnet_env_path = global_env_path
+    settings.nnUnet_env = global_respan_env
+    settings.selfnet_inference_script = str(SELFNET_INFERENCE_SCRIPT)
+    settings.selfnet_training_script = str(SELFNET_TRAINING_SCRIPT)
+    settings.clean_launcher = str(clean_launcher)
+    settings.internal_py_path = str(PY_EXE)
+    settings.nnunet_predict_bat = nnunet_predict_bat
+    
+    settings.neck_generation = p.neck_generation
+    settings.recover_filopodia = p.recover_filopodia
+    settings.dendrite_repair = bool(p.dendrite_repair)
+    settings.dendrite_repair_max_dist_um = float(p.dendrite_repair_max_dist_um)
+    settings.detect_multi_head_spines = bool(p.detect_multi_head_spines)
+    settings.keep_partial_spines = p.keep_partial_spines
+    
+    #basepath for selfnet
+    settings.basepath = base_path
+    
+    settings.image_restore = p.image_restore
+    settings.axial_restore = p.axial_restore
+    settings.neuron_channel = int(p.neuron_ch)
+    settings.analysis_method = "Whole Neuron"
+    settings.dask_block = (64, 256, 256)
+    settings.dask_halo = (8, 8, 8)
+    settings.Vaa3d = p.swc
+    #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
+    settings.min_dendrite_vol = round(p.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
+    settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in p.spine_vol]
+    settings.neuron_spine_dist = round(p.spine_dist / (settings.input_resXY),2)
+    # Override YAML spurious-neck thresholds with GUI values.
+    settings.spurious_path_length_min_um = float(p.spurious_length_min_um)
+    settings.spurious_nnunet_support_min = float(p.spurious_nnunet_support_min)
+    settings.spurious_keep_head_if_flagged = bool(p.spurious_keep_head_if_flagged)
+    # GUI master toggle: checked = neck_only (head retained,
+    # reclassified as partial-spine). unchecked = flag_only
+    # (no voxel drops, CSV-only flag). YAML override for 'both'.
+    settings.spurious_exclude_mode = (
+        'neck_only' if bool(p.drop_spurious_necks) else 'flag_only')
+    # drop_disconnected_neck_fragments and
+    # drop_wrong_direction_neck_fragments are YAML-only advanced
+    # options — loaded in Main.py SpuriousNeck block with default
+    # True. GUI does not override; users can disable via YAML.
+    settings.HistMatch = False #p.HistMatch
+    settings.Track = p.Track
+    settings.reg_method = p.reg_method
+    # Logging and memory tracking are always on (fast, console only).
+    # save_intermediate_data controls disk-heavy spine array/MIP exports.
+    settings.additional_logging = True
+    settings.checkmem = True
+    settings.additional_logging_dev = additional_logging_dev
+    #settings.second_pass = p.second_pass
+    settings.second_pass = False
+    
+    settings.patch_for_nnunet = p.nnUNet_patching
+    settings.nnunet_patch_size = (256, 512, 512)
+    settings.nnunet_stride = tuple(int(p*0.75) for p in settings.nnunet_patch_size)
+    
+    settings.use_vox_measurements = False
+    if p.dask_enabled:
+        settings.resave_omezarr = True
+        settings.zarr_threads = None
+        settings.zarr_show_progress = True
+    else:
+        settings.resave_omezarr = False
+    
+    if p.model_type == "Spines, Dendrites, and Soma (original)":
+        settings.model_type = 1
+    elif p.model_type == "Dendrites and Soma Only":
+        settings.model_type = 2
+    elif p.model_type == "Spines, Necks, Dendrites, and Soma":
+        settings.model_type = 3
+    elif p.model_type == "Spines, Necks, Dendrites, Soma, and Axons (2025)":
+        settings.model_type = 4
+    
+    logger.info(" RESPAN Parameters:")
+    logger.info(f"  Image resolution: {settings.input_resXY}µm XY, {settings.input_resZ}µm Z")
+    logger.info(f"  Model used: {settings.neuron_seg_model_path}")
+    logger.info(f"  Model type: {p.model_type}")
+    logger.info(f"  Model resolution: {settings.model_resXY}µm XY, {settings.model_resZ}µm Z")
+    logger.info(
+        f"  Conda Path {settings.nnUnet_conda_path} and Environment Path {settings.nnUnet_env_path}")
+    logger.info(f"  Environment: {settings.nnUnet_env}")
+    logger.info(f"  Base path: {settings.basepath}\n")
+    logger.info(f"  Dendrite volume set to: {p.min_dendrite_vol} µm, {settings.min_dendrite_vol} voxels")
+    logger.info(f"  Spine volume set to: {p.spine_vol[0]} to {p.spine_vol[1]} µm³, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels")
+    logger.info(f"  Spine distance filter set to: {p.spine_dist} µm, {settings.neuron_spine_dist} pixels")
+    logger.info(f"  Analysis method: {p.analysis_method}")
+    #logger.info(f" Second pass enabled: {p.second_pass}")
+    logger.info(f"  GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}")
+    logger.info(f"  Tracking set to: {settings.Track}, using {settings.reg_method} registration.")
+    #logger.info(f"  Histogram matching set to: {settings.HistMatch}")
+    logger.info(f"  Image restoration set to {p.image_restore} and axial restoration set to {p.axial_restore}")
+    logger.info(f"  Neck generation {p.neck_generation}")
+    logger.info(f"  Dask parallelization set to: {p.dask_enabled}")
+    # log dask block and halo
+    if p.dask_enabled:
+        logger.info(f"  Dask block size set to: {settings.dask_block[0]},{settings.dask_block[1]},{settings.dask_block[2]}")
+        logger.info(f"  Dask halo size set to: {settings.dask_halo[0]},{settings.dask_halo[1]},{settings.dask_halo[2]}")
+    if settings.patch_for_nnunet:
+        logger.info(f"  nnUNet patching enabled.Patch size set to: {settings.nnunet_patch_size[0]},{settings.nnunet_patch_size[1]},{settings.nnunet_patch_size[2]}")
+    else:
+        logger.info(f"  nnUNet patching disabled.")
 
 
 class AnalysisWorker(QThread):
@@ -1693,130 +2005,8 @@ class AnalysisWorker(QThread):
                     self.logger.info("Release Date: "+__date__)
                     self.logger.info("Created by: "+__author__+"")
                     self.logger.info("Department of Neurology, The Ohio State University\n")
-                    #self.logger.info("Zuckerman Institute, Columbia University\n")
 
-                    #update locations for elastix
-                    locations.elastix_path = elastix_path
-                    locations.elastix_params = elastix_params
-                    locations.elastix_temp = locations.nnUnet_input + "/temp_elastix"
-
-
-                    #Modify specific parameters and settings:
-                    settings.save_intermediate_data = self.save_intermediate
-                    settings.dask_enabled = self.dask_enabled
-                    settings.save_val_data = self.save_validation
-                    settings.neuron_seg_model_path = self.model_dir
-
-                    if self.use_yaml_res == False:
-                        settings.input_resXY = self.inputxy
-                        settings.input_resZ = self.inputz
-                        settings.model_resXY = self.modelxy
-                        settings.model_resZ = self.modelz
-
-                    settings.nnUnet_type = '3d_fullres'
-                    settings.nnUnet_conda_path = global_conda_path
-                    settings.nnUnet_env_path = global_env_path
-                    settings.nnUnet_env = global_respan_env
-                    settings.selfnet_inference_script = str(SELFNET_INFERENCE_SCRIPT)
-                    settings.selfnet_training_script = str(SELFNET_TRAINING_SCRIPT)
-                    settings.clean_launcher = str(clean_launcher)
-                    settings.internal_py_path = str(PY_EXE)
-                    settings.nnunet_predict_bat = nnunet_predict_bat
-
-                    settings.neck_generation = self.neck_generation
-                    settings.recover_filopodia = self.recover_filopodia
-                    settings.dendrite_repair = bool(self.dendrite_repair)
-                    settings.dendrite_repair_max_dist_um = float(self.dendrite_repair_max_dist_um)
-                    settings.detect_multi_head_spines = bool(self.detect_multi_head_spines)
-                    settings.keep_partial_spines = self.keep_partial_spines
-
-                    #basepath for selfnet
-                    settings.basepath = base_path
-
-                    settings.image_restore = self.image_restore
-                    settings.axial_restore = self.axial_restore
-                    settings.neuron_channel = int(self.neuron_ch)
-                    settings.analysis_method = "Whole Neuron"
-                    settings.dask_block = (64, 256, 256)
-                    settings.dask_halo = (8, 8, 8)
-                    settings.Vaa3d = self.swc
-                    #settings.spine_roi_volume_size = 4 #in microns in x, y, z - approx 50px for 0.3 resolution data
-                    settings.min_dendrite_vol = round(self.min_dendrite_vol / settings.input_resXY/settings.input_resXY/settings.input_resZ, 0)
-                    settings.neuron_spine_size = [round(x / (settings.input_resXY*settings.input_resXY*settings.input_resZ),0) for x in self.spine_vol]
-                    settings.neuron_spine_dist = round(self.spine_dist / (settings.input_resXY),2)
-                    # Override YAML spurious-neck thresholds with GUI values.
-                    settings.spurious_path_length_min_um = float(self.spurious_length_min_um)
-                    settings.spurious_nnunet_support_min = float(self.spurious_nnunet_support_min)
-                    settings.spurious_keep_head_if_flagged = bool(self.spurious_keep_head_if_flagged)
-                    # GUI master toggle: checked = neck_only (head retained,
-                    # reclassified as partial-spine). unchecked = flag_only
-                    # (no voxel drops, CSV-only flag). YAML override for 'both'.
-                    settings.spurious_exclude_mode = (
-                        'neck_only' if bool(self.drop_spurious_necks) else 'flag_only')
-                    # drop_disconnected_neck_fragments and
-                    # drop_wrong_direction_neck_fragments are YAML-only advanced
-                    # options — loaded in Main.py SpuriousNeck block with default
-                    # True. GUI does not override; users can disable via YAML.
-                    settings.HistMatch = False #self.HistMatch
-                    settings.Track = self.Track
-                    settings.reg_method = self.reg_method
-                    # Logging and memory tracking are always on (fast, console only).
-                    # save_intermediate_data controls disk-heavy spine array/MIP exports.
-                    settings.additional_logging = True
-                    settings.checkmem = True
-                    settings.additional_logging_dev = additional_logging_dev
-                    #settings.second_pass = self.second_pass
-                    settings.second_pass = False
-
-                    settings.patch_for_nnunet = self.nnUNet_patching
-                    settings.nnunet_patch_size = (256, 512, 512)
-                    settings.nnunet_stride = tuple(int(p*0.75) for p in settings.nnunet_patch_size)
-
-                    settings.use_vox_measurements = False
-                    if self.dask_enabled:
-                        settings.resave_omezarr = True
-                        settings.zarr_threads = None
-                        settings.zarr_show_progress = True
-                    else:
-                        settings.resave_omezarr = False
-
-                    if self.model_type == "Spines, Dendrites, and Soma (original)":
-                        settings.model_type = 1
-                    elif self.model_type == "Dendrites and Soma Only":
-                        settings.model_type = 2
-                    elif self.model_type == "Spines, Necks, Dendrites, and Soma":
-                        settings.model_type = 3
-                    elif self.model_type == "Spines, Necks, Dendrites, Soma, and Axons (2025)":
-                        settings.model_type = 4
-
-                    self.logger.info(" RESPAN Parameters:")
-                    self.logger.info(f"  Image resolution: {settings.input_resXY}µm XY, {settings.input_resZ}µm Z")
-                    self.logger.info(f"  Model used: {settings.neuron_seg_model_path}")
-                    self.logger.info(f"  Model type: {self.model_type}")
-                    self.logger.info(f"  Model resolution: {settings.model_resXY}µm XY, {settings.model_resZ}µm Z")
-                    self.logger.info(
-                        f"  Conda Path {settings.nnUnet_conda_path} and Environment Path {settings.nnUnet_env_path}")
-                    self.logger.info(f"  Environment: {settings.nnUnet_env}")
-                    self.logger.info(f"  Base path: {settings.basepath}\n")
-                    self.logger.info(f"  Dendrite volume set to: {self.min_dendrite_vol} µm, {settings.min_dendrite_vol} voxels")
-                    self.logger.info(f"  Spine volume set to: {self.spine_vol[0]} to {self.spine_vol[1]} µm³, {settings.neuron_spine_size[0]} to {settings.neuron_spine_size[1]} voxels")
-                    self.logger.info(f"  Spine distance filter set to: {self.spine_dist} µm, {settings.neuron_spine_dist} pixels")
-                    self.logger.info(f"  Analysis method: {self.analysis_method}")
-                    #self.logger.info(f" Second pass enabled: {self.second_pass}")
-                    self.logger.info(f"  GPU block size set to: {settings.GPU_block_size[0]},{settings.GPU_block_size[1]},{settings.GPU_block_size[1]}")
-                    self.logger.info(f"  Tracking set to: {settings.Track}, using {settings.reg_method} registration.")
-                    #self.logger.info(f"  Histogram matching set to: {settings.HistMatch}")
-                    self.logger.info(f"  Image restoration set to {self.image_restore} and axial restoration set to {self.axial_restore}")
-                    self.logger.info(f"  Neck generation {self.neck_generation}")
-                    self.logger.info(f"  Dask parallelization set to: {self.dask_enabled}")
-                    # log dask block and halo
-                    if self.dask_enabled:
-                        self.logger.info(f"  Dask block size set to: {settings.dask_block[0]},{settings.dask_block[1]},{settings.dask_block[2]}")
-                        self.logger.info(f"  Dask halo size set to: {settings.dask_halo[0]},{settings.dask_halo[1]},{settings.dask_halo[2]}")
-                    if settings.patch_for_nnunet:
-                        self.logger.info(f"  nnUNet patching enabled.Patch size set to: {settings.nnunet_patch_size[0]},{settings.nnunet_patch_size[1]},{settings.nnunet_patch_size[2]}")
-                    else:
-                        self.logger.info(f"  nnUNet patching disabled.")
+                    apply_run_parameters(settings, locations, self, self.logger)
 
                     #Processing
                     self.logger.info(f"\nProcessing folder: {subfolder_path}\n")
@@ -1826,7 +2016,11 @@ class AnalysisWorker(QThread):
                         log = sr.restore_and_segment(settings, locations, self.logger)
 
                         if settings.Track == False and log == 0:
-                            imgan.analyze_spines(settings, locations, log, self.logger)
+                            n_failed = imgan.analyze_spines(settings, locations, log, self.logger) or 0
+                            if n_failed:
+                                self.logger.error(
+                                    f"{n_failed} image(s) FAILED in this folder. Check the errors above "
+                                    f"before using any results from it.")
 
                         if settings.Track == True and log == 0:
                             strk.track_spines(settings, locations, log, self.logger)
@@ -1844,7 +2038,6 @@ class AnalysisWorker(QThread):
                             self.logger.info("Release Date: "+__date__+"")
                             self.logger.info("Created by: "+__author__+"")
                             self.logger.info("Department of Neurology, The Ohio State University")
-                            #self.logger.info("Zuckerman Institute, Columbia University\n")
                             self.logger.info("-----------------------------------------------------------------------------------------------------")
                             self.logger.info(respan_paper)
                             self.logger.info(nnUNet_paper)
@@ -2038,8 +2231,9 @@ class RESPANValidation(QWidget):
         self.setLayout(layout)
 
         try:
-            with open('parametesrvalGUI.pkl', 'rb') as f:
-                variables_dict = pickle.load(f)
+            variables_dict = _load_settings('parametesrvalGUI.pkl')
+            if variables_dict is None:
+                raise FileNotFoundError('parametesrvalGUI.pkl')  # handled below exactly as before
 
             #retreive
             if global_GUI_app == False:
@@ -2142,8 +2336,7 @@ class RESPANValidation(QWidget):
 
 
         # Save the dictionary to a pickle file
-        with open('parametesrvalGUI.pkl', 'wb') as f:
-            pickle.dump(variables_dict, f)
+        _save_settings('parametesrvalGUI.pkl', variables_dict, getattr(self, 'log_display', None))
 
 
     @pyqtSlot()
@@ -2290,7 +2483,6 @@ class ValidationWorker(QThread):
             self.logger.info("Release Date: "+__date__)
             self.logger.info("Created by: "+__author__+"")
             self.logger.info("Department of Neurology, The Ohio State University")
-            #self.logger.info("Zuckerman Institute, Columbia University\n")
 
 
             #Load in experiment parameters and analysis settings
@@ -2328,7 +2520,6 @@ class ValidationWorker(QThread):
             self.logger.info("Release Date: "+__date__+"")
             self.logger.info("Created by: "+__author__+"")
             self.logger.info("Department of Neurology, The Ohio State University")
-            #self.logger.info("Zuckerman Institute, Columbia University\n")
             self.logger.info("-----------------------------------------------------------------------------------------------------")
 
             self.task_done.emit("")
@@ -2475,28 +2666,29 @@ class UNet(QWidget):
         self.setLayout(layout)
 
         try:
-            with open('nnUNETparametersGUI.pkl', 'rb') as f:
-                variables_dict = pickle.load(f)
+            variables_dict = _load_settings('nnUNETparametersGUI.pkl')
+            if variables_dict is None:
+                raise FileNotFoundError('nnUNETparametersGUI.pkl')  # handled below exactly as before
 
-                # Retrieve
-                if global_GUI_app == False:
-                    respan_dir = variables_dict.get('respan_dir', None)
+            # Retrieve
+            if global_GUI_app == False:
+                respan_dir = variables_dict.get('respan_dir', None)
 
-                gt_dir = variables_dict.get('gt_dir', None)
-                data_dir = variables_dict.get('data_dir', None)
+            gt_dir = variables_dict.get('gt_dir', None)
+            data_dir = variables_dict.get('data_dir', None)
 
-                datasetID = variables_dict.get('datasetID', None)
-                ignore = variables_dict.get('ignore', None)
+            datasetID = variables_dict.get('datasetID', None)
+            ignore = variables_dict.get('ignore', None)
 
-                # Update GUI
-                if global_GUI_app == False:
-                    self.RESPANdir_label.setText(f"Selected directory: {respan_dir}")
+            # Update GUI
+            if global_GUI_app == False:
+                self.RESPANdir_label.setText(f"Selected directory: {respan_dir}")
 
-                self.directory_label.setText(f"Selected directory: {data_dir}")
-                self.ground_truth_dir_label.setText(f"Selected directory: {gt_dir}")
+            self.directory_label.setText(f"Selected directory: {data_dir}")
+            self.ground_truth_dir_label.setText(f"Selected directory: {gt_dir}")
 
-                self.datasetID_input.setText(datasetID)
-                self.ignore_input.setChecked(ignore)
+            self.datasetID_input.setText(datasetID)
+            self.ignore_input.setChecked(ignore)
 
 
         except (FileNotFoundError, EOFError, pickle.PickleError):
@@ -2553,8 +2745,7 @@ class UNet(QWidget):
             }
 
             # Save the dictionary to a pickle file
-            with open('nnUNETparametersGUI.pkl', 'wb') as f:
-                pickle.dump(variables_dict, f)
+            _save_settings('nnUNETparametersGUI.pkl', variables_dict, getattr(self, 'log_display', None))
         except Exception as e:
             self.log_display.append(f"An error occurred: {e}")
 
@@ -2931,46 +3122,47 @@ class CARE(QWidget):
         self.setLayout(layout)
 
         try:
-            with open('CAREparametersGUI.pkl', 'rb') as f:
-                variables_dict = pickle.load(f)
+            variables_dict = _load_settings('CAREparametersGUI.pkl')
+            if variables_dict is None:
+                raise FileNotFoundError('CAREparametersGUI.pkl')  # handled below exactly as before
 
-                # Retrieve
-                if global_GUI_app == False:
-                    respan_dir = variables_dict.get('respan_dir', None)
-                gt_dir = variables_dict.get('gt_dir', None)
-                data_dir = variables_dict.get('data_dir', None)
+            # Retrieve
+            if global_GUI_app == False:
+                respan_dir = variables_dict.get('respan_dir', None)
+            gt_dir = variables_dict.get('gt_dir', None)
+            data_dir = variables_dict.get('data_dir', None)
 
-                patch_size = variables_dict.get('patch_size', None)
-                num_patches_per_img = variables_dict.get('num_patches_per_img', None)
-                epochs = variables_dict.get('epochs', None)
-                unet_kern_size = variables_dict.get('unet_kern_size', None)
-                unet_n_depth = variables_dict.get('unet_n_depth', None)
-                batch_size = variables_dict.get('batch_size', None)
-                steps_per_epoch = variables_dict.get('steps_per_epoch', None)
-                pct_validation = variables_dict.get('pct_validation', None)
+            patch_size = variables_dict.get('patch_size', None)
+            num_patches_per_img = variables_dict.get('num_patches_per_img', None)
+            epochs = variables_dict.get('epochs', None)
+            unet_kern_size = variables_dict.get('unet_kern_size', None)
+            unet_n_depth = variables_dict.get('unet_n_depth', None)
+            batch_size = variables_dict.get('batch_size', None)
+            steps_per_epoch = variables_dict.get('steps_per_epoch', None)
+            pct_validation = variables_dict.get('pct_validation', None)
 
-                model_name = variables_dict.get('model_name', None)
-                augmentation = variables_dict.get('augmentation', None)
-                dimension = variables_dict.get('dimension', None)
+            model_name = variables_dict.get('model_name', None)
+            augmentation = variables_dict.get('augmentation', None)
+            dimension = variables_dict.get('dimension', None)
 
-                # Update GUI
-                if global_GUI_app == False:
-                    self.RESPANdir_label.setText(f"Selected directory: {respan_dir}")
-                self.directory_label.setText(f"Selected directory: {data_dir}")
-                self.ground_truth_dir_label.setText(f"Selected directory: {gt_dir}")
+            # Update GUI
+            if global_GUI_app == False:
+                self.RESPANdir_label.setText(f"Selected directory: {respan_dir}")
+            self.directory_label.setText(f"Selected directory: {data_dir}")
+            self.ground_truth_dir_label.setText(f"Selected directory: {gt_dir}")
 
-                self.patch_size_input.setText(str(patch_size))
-                self.num_patches_per_img_input.setText(str(num_patches_per_img))
-                self.epochs_input.setText(str(epochs))
-                self.unet_kern_size_input.setText(str(unet_kern_size))
-                self.unet_n_depth_input.setText(str(unet_n_depth))
-                self.batch_size_input.setText(str(batch_size))
-                self.steps_per_epoch_input.setText(str(steps_per_epoch))
-                self.pct_validation_input.setText(str(pct_validation))
+            self.patch_size_input.setText(str(patch_size))
+            self.num_patches_per_img_input.setText(str(num_patches_per_img))
+            self.epochs_input.setText(str(epochs))
+            self.unet_kern_size_input.setText(str(unet_kern_size))
+            self.unet_n_depth_input.setText(str(unet_n_depth))
+            self.batch_size_input.setText(str(batch_size))
+            self.steps_per_epoch_input.setText(str(steps_per_epoch))
+            self.pct_validation_input.setText(str(pct_validation))
 
-                self.model_name_input.setText(model_name)
-                self.augmentation_input.setChecked(augmentation)
-                self.dimension_select.setCurrentText(dimension)
+            self.model_name_input.setText(model_name)
+            self.augmentation_input.setChecked(augmentation)
+            self.dimension_select.setCurrentText(dimension)
 
         except (FileNotFoundError, EOFError, pickle.PickleError):
             pass  # If we can't load the pickle file, just ignore the error
@@ -3042,8 +3234,7 @@ class CARE(QWidget):
         }
 
         # Save the dictionary to a pickle file
-        with open('CAREparametersGUI.pkl', 'wb') as f:
-            pickle.dump(variables_dict, f)
+        _save_settings('CAREparametersGUI.pkl', variables_dict, getattr(self, 'log_display', None))
 
     @pyqtSlot()
     def run_function(self):
@@ -3252,7 +3443,6 @@ class CAREWorker(QThread):
                     care_paper)
                 self.logger.info(
                     "-----------------------------------------------------------------------------------------------------")
-                #self.logger.info("Zuckerman Institute, Columbia University\n")
 
                 self.logger.info("CARE Parameters:")
                 self.logger.info(f" Low SNR Data Directory: {os.path.join(self.input_dir, 'lowSNR')}")
@@ -3438,7 +3628,7 @@ class SelfNet(QWidget):
         #self.conda_path_label = QLabel("Conda Path:")
         #self.conda_path_input = QLineEdit()
         #self.conda_path_input.setFixedWidth(400)
-        #self.conda_path_input.setText('C:/Users/username/Anaconda3')
+        #self.conda_path_input.setText('<path to Anaconda3>')
 
         #self.respan_env_label = QLabel("Environment:")
         #self.respan_env_input = QLineEdit()
@@ -3533,50 +3723,51 @@ class SelfNet(QWidget):
         self.setLayout(layout)
 
         try:
-            with open('SelfNetparametersGUI.pkl', 'rb') as f:
-                variables_dict = pickle.load(f)
+            variables_dict = _load_settings('SelfNetparametersGUI.pkl')
+            if variables_dict is None:
+                raise FileNotFoundError('SelfNetparametersGUI.pkl')  # handled below exactly as before
 
-                # Retrieve
-                if global_GUI_app == False:
-                    respan_dir = variables_dict.get('respan_dir', None)
-                gt_dir = variables_dict.get('gt_dir', None)
-                data_dir = variables_dict.get('data_dir', None)
+            # Retrieve
+            if global_GUI_app == False:
+                respan_dir = variables_dict.get('respan_dir', None)
+            gt_dir = variables_dict.get('gt_dir', None)
+            data_dir = variables_dict.get('data_dir', None)
 
-                model_name = variables_dict.get('model_name', None)
-                minv = variables_dict.get('minv', None)
-                maxv = variables_dict.get('maxv', None)
-                minb = variables_dict.get('minb', None)
-                scale = variables_dict.get('scale', None)
-                xy_int = variables_dict.get('xy_int', None)
-                xz_int = variables_dict.get('xz_int', None)
-                batch_size = variables_dict.get('batch_size', None)
-                epochs = variables_dict.get('epochs', None)
-                log_interval = variables_dict.get('log_interval', None)
-                imshow_interval = variables_dict.get('imshow_interval', None)
+            model_name = variables_dict.get('model_name', None)
+            minv = variables_dict.get('minv', None)
+            maxv = variables_dict.get('maxv', None)
+            minb = variables_dict.get('minb', None)
+            scale = variables_dict.get('scale', None)
+            xy_int = variables_dict.get('xy_int', None)
+            xz_int = variables_dict.get('xz_int', None)
+            batch_size = variables_dict.get('batch_size', None)
+            epochs = variables_dict.get('epochs', None)
+            log_interval = variables_dict.get('log_interval', None)
+            imshow_interval = variables_dict.get('imshow_interval', None)
 
-                #conda_path = variables_dict.get('conda_path', None)
-                #respan_env = variables_dict.get('respan_env', None)
+            #conda_path = variables_dict.get('conda_path', None)
+            #respan_env = variables_dict.get('respan_env', None)
 
-                # Update GUI
-                if global_GUI_app == False:
-                    self.RESPANdir_label.setText(f"Selected directory: {respan_dir}")
-                self.directory_label.setText(f"Selected directory: {data_dir}")
-                self.ground_truth_dir_label.setText(f"Selected directory: {gt_dir}")
+            # Update GUI
+            if global_GUI_app == False:
+                self.RESPANdir_label.setText(f"Selected directory: {respan_dir}")
+            self.directory_label.setText(f"Selected directory: {data_dir}")
+            self.ground_truth_dir_label.setText(f"Selected directory: {gt_dir}")
 
-                self.model_name_input.setText(model_name)
-                self.minv_input.setText(minv)
-                self.maxv_input.setText(maxv)
-                self.minb_input.setText(minb)
-                self.scale_input.setText(scale)
-                self.xy_int_input.setText(xy_int)
-                self.xz_int_input.setText(xz_int)
-                self.batch_size_input.setText(batch_size)
-                self.epochs_input.setText(epochs)
-                self.log_interval_input.setText(log_interval)
-                self.imshow_interval_input.setText(imshow_interval)
+            self.model_name_input.setText(model_name)
+            self.minv_input.setText(minv)
+            self.maxv_input.setText(maxv)
+            self.minb_input.setText(minb)
+            self.scale_input.setText(scale)
+            self.xy_int_input.setText(xy_int)
+            self.xz_int_input.setText(xz_int)
+            self.batch_size_input.setText(batch_size)
+            self.epochs_input.setText(epochs)
+            self.log_interval_input.setText(log_interval)
+            self.imshow_interval_input.setText(imshow_interval)
 
-                #self.conda_path_input.setText(conda_path)
-                #self.respan_env_input.setText(respan_env)
+            #self.conda_path_input.setText(conda_path)
+            #self.respan_env_input.setText(respan_env)
 
         except (FileNotFoundError, EOFError, pickle.PickleError):
             pass  # If we can't load the pickle file, just ignore the error
@@ -3654,8 +3845,7 @@ class SelfNet(QWidget):
             }
 
             # Save the dictionary to a pickle file
-            with open('SelfNetparametersGUI.pkl', 'wb') as f:
-                pickle.dump(variables_dict, f)
+            _save_settings('SelfNetparametersGUI.pkl', variables_dict, getattr(self, 'log_display', None))
         except Exception as e:
             self.log_display.append(f"An error occurred: {e}")
 
@@ -3805,7 +3995,6 @@ class SelfNetWorker(QThread):
             self.logger.info(self_net_paper)
             self.logger.info(
                 "-----------------------------------------------------------------------------------------------------")
-            #self.logger.info("Zuckerman Institute, Columbia University\n")
 
             self.logger.info("Self-Net Parameters:")
             self.logger.info(f" Using conda environment: {global_env_path}/{global_respan_env}")
@@ -3955,7 +4144,301 @@ class About(QWidget):
         # self.logger.qt_handler.log_generated.disconnect(self.update_log_display)
 
 '''
+# ---------------------------------------------------------------------------
+# Headless command-line mode (--cli)
+# ---------------------------------------------------------------------------
+# Runs the same initialize -> restore_and_segment -> analyze_spines chain the
+# GUI's Run button drives, on every dataset subfolder of --data-dir, without
+# creating a Qt window. Exists so the packaged application can be exercised
+# end-to-end from a shell (bundled nnU-Net environment included) and return a
+# meaningful exit code: 0 = every dataset completed, 1 = a dataset failed or
+# none were found, 2 = unhandled exception.
+#
+# The distribution is a windowed executable with no console of its own, so a
+# parent console is attached when one exists (cmd / PowerShell / Windows
+# Terminal). Under a pipe-based terminal (Git Bash) there is nothing to attach
+# to; pass --log-file to capture the whole run. Each dataset also gets its
+# usual <dataset>/RESPAN_Log_<timestamp>.log.
+
+MODEL_TYPE_LABELS = {
+    1: "Spines, Dendrites, and Soma (original)",
+    2: "Dendrites and Soma Only",
+    3: "Spines, Necks, Dendrites, and Soma",
+    4: "Spines, Necks, Dendrites, Soma, and Axons (2025)",
+}
+
+
+def _attach_parent_console():
+    """Windowed builds may start with sys.stdout and/or sys.stderr = None.
+
+    Attach the launching console when there is one (cmd / PowerShell /
+    Windows Terminal) and point each missing stream at it. Whatever is still
+    None afterwards (no console, no redirection of that stream) gets a
+    discard stream, because argparse's usage/error printing cannot handle a
+    None stream on Python 3.9. Streams are opened UTF-8 with replacement so a
+    non-encodable character in a diagnostic can never raise.
+    """
+    if os.name != 'nt':
+        return
+    if sys.stdout is None or sys.stderr is None:
+        try:
+            import ctypes
+            if ctypes.windll.kernel32.AttachConsole(-1):  # ATTACH_PARENT_PROCESS
+                con = open('CONOUT$', 'w', encoding='utf-8', errors='replace', buffering=1)
+                if sys.stdout is None:
+                    sys.stdout = con
+                if sys.stderr is None:
+                    sys.stderr = con
+        except Exception:
+            pass
+    for name in ('stdout', 'stderr'):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, 'w', encoding='utf-8', errors='replace'))
+
+
+class CliLogger(Logger):
+    """The GUI Logger with the Qt handler replaced by console / file streams."""
+
+    def __init__(self, log_file=None):
+        self.logger = logging.getLogger("respan_cli")
+        self.logger.setLevel(logging.DEBUG)
+        for h in self.logger.handlers[:]:
+            self.logger.removeHandler(h)
+        self.file_handler = None
+        fmt = logging.Formatter('%(message)s')
+        if sys.stdout is not None:
+            ch = logging.StreamHandler(sys.stdout)
+            ch.setFormatter(fmt)
+            self.logger.addHandler(ch)
+        if log_file:
+            gh = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+            gh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+            self.logger.addHandler(gh)
+
+
+def _min_max_pair(text):
+    """argparse type for --spine-vol: 'min,max' -> [min, max] as floats."""
+    try:
+        lo, hi = (float(x) for x in text.split(','))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected two numbers 'min,max', got {text!r}")
+    return [lo, hi]
+
+
+def _build_cli_parser():
+    ap = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]) + " --cli",
+        description="RESPAN headless mode. Processes every dataset subfolder of "
+                    "--data-dir that contains an Analysis_Settings.yaml, exactly as "
+                    "the GUI Run button does. Defaults match the GUI defaults.")
+    ap.add_argument('--cli', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--data-dir', required=True,
+                    help="Folder whose subfolders are datasets (each with Analysis_Settings.yaml)")
+    ap.add_argument('--model-dir', required=True,
+                    help="nnU-Net model folder (the Dataset###_... directory)")
+    ap.add_argument('--model-type', type=int, choices=sorted(MODEL_TYPE_LABELS), required=True,
+                    help="1=" + MODEL_TYPE_LABELS[1] + "; 2=" + MODEL_TYPE_LABELS[2]
+                         + "; 3=" + MODEL_TYPE_LABELS[3] + "; 4=" + MODEL_TYPE_LABELS[4])
+    ap.add_argument('--input-xy', type=float, help="Image XY voxel size in um")
+    ap.add_argument('--input-z', type=float, help="Image Z step in um")
+    ap.add_argument('--model-xy', type=float, help="Model XY voxel size in um")
+    ap.add_argument('--model-z', type=float, help="Model Z step in um")
+    ap.add_argument('--use-yaml-res', action='store_true',
+                    help="Take the four resolutions from Analysis_Settings.yaml instead")
+    ap.add_argument('--neuron-channel', type=int, default=1)
+    ap.add_argument('--min-dendrite-vol', type=float, default=15.0, help="um^3 (GUI default 15)")
+    ap.add_argument('--spine-vol', type=_min_max_pair, default="0.03,15",
+                    help="min,max spine volume in um^3 (GUI default 0.03,15)")
+    ap.add_argument('--spine-dist', type=float, default=4.0, help="max spine-to-dendrite distance in um (GUI default 4)")
+    ap.add_argument('--spurious-length-min-um', type=float, default=1.0)
+    ap.add_argument('--spurious-support-min', type=float, default=0.2)
+    ap.add_argument('--keep-head-if-flagged', action='store_true')
+    ap.add_argument('--no-drop-spurious-necks', action='store_true')
+    ap.add_argument('--no-neck-generation', action='store_true')
+    ap.add_argument('--recover-filopodia', action='store_true')
+    ap.add_argument('--dendrite-repair', action='store_true')
+    ap.add_argument('--dendrite-repair-max-dist-um', type=float, default=2.0)
+    ap.add_argument('--detect-multi-head-spines', action='store_true')
+    ap.add_argument('--no-keep-partial-spines', action='store_true')
+    ap.add_argument('--image-restore', action='store_true', help="CARE restoration (model path from YAML)")
+    ap.add_argument('--axial-restore', action='store_true', help="SelfNet axial restoration (model path from YAML)")
+    ap.add_argument('--save-intermediate', action='store_true')
+    ap.add_argument('--no-save-validation', action='store_true')
+    ap.add_argument('--nnunet-patching', action='store_true', help="Tile large images for nnU-Net inference")
+    ap.add_argument('--track', action='store_true', help="4D spine tracking across timepoints")
+    ap.add_argument('--reg-method', choices=["Rigid", "Elastic"], default="Rigid")
+    ap.add_argument('--swc', action='store_true')
+    ap.add_argument('--dask', action='store_true', help=argparse.SUPPRESS)  # experimental, GUI-hidden semantics
+    ap.add_argument('--log-file', help="Also write the whole headless run to this file")
+    ap.add_argument('--respan-dir', help=argparse.SUPPRESS)  # source runs only: repo root holding the RESPAN package
+    return ap
+
+
+def _cli_params(a, parser):
+    """Build the parameter namespace apply_run_parameters() expects."""
+    spine_vol = list(a.spine_vol)  # already validated by _min_max_pair
+    if not a.use_yaml_res and None in (a.input_xy, a.input_z, a.model_xy, a.model_z):
+        parser.error("give --input-xy --input-z --model-xy --model-z, or pass --use-yaml-res")
+    return SimpleNamespace(
+        model_dir=a.model_dir,
+        use_yaml_res=a.use_yaml_res,
+        inputxy=a.input_xy, inputz=a.input_z, modelxy=a.model_xy, modelz=a.model_z,
+        neuron_ch=a.neuron_channel,
+        analysis_method="Whole Neuron",
+        min_dendrite_vol=a.min_dendrite_vol,
+        spine_vol=spine_vol,
+        spine_dist=a.spine_dist,
+        spurious_length_min_um=a.spurious_length_min_um,
+        spurious_nnunet_support_min=a.spurious_support_min,
+        spurious_keep_head_if_flagged=a.keep_head_if_flagged,
+        drop_spurious_necks=not a.no_drop_spurious_necks,
+        neck_generation=not a.no_neck_generation,
+        recover_filopodia=a.recover_filopodia,
+        dendrite_repair=a.dendrite_repair,
+        dendrite_repair_max_dist_um=a.dendrite_repair_max_dist_um,
+        detect_multi_head_spines=a.detect_multi_head_spines,
+        keep_partial_spines=not a.no_keep_partial_spines,
+        image_restore=a.image_restore,
+        axial_restore=a.axial_restore,
+        swc=a.swc,
+        save_intermediate=a.save_intermediate,
+        save_validation=not a.no_save_validation,
+        dask_enabled=a.dask,
+        nnUNet_patching=a.nnunet_patching,
+        Track=a.track,
+        reg_method=a.reg_method,
+        second_pass=False,
+        model_type=MODEL_TYPE_LABELS[a.model_type],
+    )
+
+
+def run_cli(argv):
+    """Entry point for --cli. Returns the process exit code."""
+    _attach_parent_console()
+    parser = _build_cli_parser()
+    args = parser.parse_args(argv)          # usage errors exit 2 via argparse
+    p = _cli_params(args, parser)
+    try:
+        logger = CliLogger(args.log_file)
+    except OSError as e:
+        # Unwritable --log-file: still run, but say so where it can be seen.
+        sys.stderr.write(f"Cannot open --log-file {args.log_file!r}: {e}; continuing without it\n")
+        logger = CliLogger(None)
+    try:
+        return _run_cli(args, p, logger)
+    except SystemExit:
+        raise
+    except Exception as e:
+        logger.error(f"Headless run aborted: {e}", exc_info=True)
+        return 2
+
+
+def _run_cli(args, p, logger):
+    logger.info(f"RESPAN {__version__} ({__date__}) headless mode")
+    logger.info(f"  APP_DIR: {APP_DIR}")
+    logger.info(f"  Frozen build: {FROZEN}")
+    if FROZEN:
+        if not (VENV_DIR.exists() and PY_EXE.exists()):
+            logger.error(f"Embedded environment not found at {VENV_DIR}")
+            return 1
+        ensure_nnunet_installed(logger)   # first-run editable install, sentinel-gated
+        logger.info(f"  Bundled nnU-Net environment ready at {VENV_DIR}")
+
+    if not FROZEN:
+        # Running from source: make the RESPAN package importable, as the GUI
+        # does when the user selects the repository directory (dev mode only;
+        # the frozen build bundles the package).
+        repo_root = Path(args.respan_dir) if args.respan_dir else APP_DIR.parent.parent
+        sys.path.append(str(repo_root))
+    from RESPAN.Environment import main, imgan, strk, sr
+    main.check_gpu()
+
+    directory = os.path.abspath(args.data_dir).replace(os.sep, "/") + "/"
+    if not os.path.isdir(directory):
+        logger.error(f"Directory does not exist: {directory}")
+        return 1
+    if not os.path.isdir(p.model_dir):
+        logger.error(f"Model directory does not exist: {p.model_dir}")
+        return 1
+    for label, path in (("data directory", directory), ("model directory", p.model_dir)):
+        if " " in path:
+            logger.warning(f"  Warning: {label} path contains spaces (known to break some tools): {path}")
+        if "onedrive" in path.lower():
+            logger.warning(f"  Warning: {label} appears to be inside a OneDrive-synced folder: {path}")
+
+    processed = 0
+    failed = []
+    skipped = []
+    for subfolder in sorted(os.listdir(directory)):
+        subfolder_path = os.path.join(directory, subfolder)
+        if not os.path.isdir(subfolder_path):
+            continue
+        subfolder_path = subfolder_path.replace(os.sep, "/") + "/"
+        if not os.path.exists(os.path.join(subfolder_path, "Analysis_Settings.yaml")):
+            logger.info(f"  Skipping '{subfolder}': No Analysis_Settings.yaml found.")
+            skipped.append(subfolder)
+            continue
+
+        processed += 1
+        # Everything dataset-specific sits inside one handler: a malformed
+        # Analysis_Settings.yaml or a bad parameter in ONE dataset is recorded
+        # as that dataset's failure and the batch continues (exit code 1).
+        try:
+            settings, locations = main.initialize_RESPAN(subfolder_path)
+
+            log_path = subfolder_path + 'RESPAN_Log_' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'
+            logger.set_log_file(log_path)
+            logger.clear_log(log_path)
+
+            logger.info("RESPAN Version: " + __version__)
+            logger.info("Release Date: " + __date__)
+            logger.info("Created by: " + __author__)
+            logger.info("Department of Neurology, The Ohio State University\n")
+
+            apply_run_parameters(settings, locations, p, logger)
+
+            logger.info(f"\nProcessing folder: {subfolder_path}\n")
+
+            if not os.path.exists(f'{global_env_path}/{global_respan_env}/'):
+                logger.error("Error: nnUNet environment not created or set correctly.")
+                logger.error(" Path set to:" + global_env_path + '/' + global_respan_env + '/')
+                failed.append(subfolder)
+                continue
+
+            log = sr.restore_and_segment(settings, locations, logger)
+            if log == 0:
+                n_failed = 0
+                if settings.Track:
+                    strk.track_spines(settings, locations, log, logger)
+                    imgan.analyze_spines_4D(settings, locations, log, logger)
+                else:
+                    n_failed = imgan.analyze_spines(settings, locations, log, logger) or 0
+                if n_failed:
+                    logger.error(f"RESPAN analysis finished with errors: {subfolder} ({n_failed} image(s) failed)")
+                    failed.append(subfolder)
+                else:
+                    logger.info(f"RESPAN analysis complete: {subfolder}")
+            else:
+                logger.error("Error with restoration and segmentation.")
+                failed.append(subfolder)
+        except Exception as e:
+            logger.error(f"An error occurred processing '{subfolder}': {e}", exc_info=True)
+            failed.append(subfolder)
+
+    if processed == 0:
+        logger.error("\nNo valid dataset subfolders were found in the selected directory.")
+        logger.error("RESPAN expects each dataset to be in its own subfolder, containing an Analysis_Settings.yaml file.")
+        return 1
+    if skipped:
+        logger.info(f"\nSkipped {len(skipped)} subfolder(s) due to missing Analysis_Settings.yaml: " + ", ".join(skipped))
+    done = processed - len(failed)
+    logger.info(f"\nHeadless run finished: {done} of {processed} dataset(s) completed"
+                + (f"; FAILED: {', '.join(failed)}" if failed else ""))
+    return 1 if failed else 0
+
+
 def RESPAN_gui():
+    _install_crash_reporter()
     app = QApplication([])
 
     #app.setStyleSheet(qss)
@@ -4001,4 +4484,6 @@ def RESPAN_gui():
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn')
     multiprocessing.freeze_support() # required to allow multithreading internally
+    if '--cli' in sys.argv[1:]:
+        sys.exit(run_cli(sys.argv[1:]))
     RESPAN_gui()

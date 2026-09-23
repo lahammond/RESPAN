@@ -1,8 +1,37 @@
 
 
 
+import os
+
 import numpy as np
 from tifffile import imwrite
+
+
+def long_path(path):
+    """Return `path` in a form Windows will accept at any length.
+
+    2026-09-20: Windows refuses to open a path longer than 260 characters
+    unless it carries the `\\?\` extended-length prefix. RESPAN output paths
+    concatenate the dataset folder, an output subfolder and the source image
+    filename, so a cloud-synced data root plus a descriptive filename crosses
+    that limit easily - a T2-series validation MIP measured 263 characters and
+    the whole image was lost, its stale CSVs from a previous run left in place
+    looking current.
+
+    The prefix requires a fully qualified path with no forward slashes and no
+    relative components, which `abspath` guarantees. Applied unconditionally on
+    Windows rather than above a length threshold, so there is one code path
+    instead of a branch that only runs on the rare inputs that break.
+    Non-Windows platforms have no such limit and get the path unchanged.
+    """
+    if os.name != "nt":
+        return path
+    resolved = os.path.abspath(path)
+    if resolved.startswith("\\\\?\\"):
+        return resolved
+    if resolved.startswith("\\\\"):          # UNC share: \\server\share -> \\?\UNC\server\share
+        return "\\\\?\\UNC" + resolved[1:]
+    return "\\\\?\\" + resolved
 
 
 # ImageJ LUTs (256x3 uint8) used when saving validation MIPs as composite TIFFs.
@@ -237,7 +266,7 @@ def create_and_save_multichannel_tiff(images_3d, filename, bitdepth, settings,
     except (AttributeError, TypeError, ValueError):
         pass
 
-    imwrite(filename, multichannel_image,
+    imwrite(long_path(filename), multichannel_image,
             compression='zlib', compressionargs={'level': 1},
             imagej=True, photometric='minisblack',
             metadata=meta, **_imagej_resolution_kwargs(settings))
@@ -368,7 +397,7 @@ def create_mip_and_save_multichannel_tiff(images_3d, filename, bitdepth, setting
     except (AttributeError, TypeError, ValueError):
         pass
 
-    imwrite(filename, multichannel_image,
+    imwrite(long_path(filename), multichannel_image,
             compression='zlib', compressionargs={'level': 1},
             imagej=True, photometric='minisblack',
             metadata=meta, **_imagej_resolution_kwargs(settings))
@@ -403,7 +432,7 @@ def create_mip_and_save_multichannel_tiff_4d(images_3d, filename, bitdepth, sett
     # Save the multichannel image as a 16-bit TIFF file
     #imwrite(filename, multichannel_image, photometric='minisblack')
 
-    imwrite(filename, multichannel_image, compression='zlib', compressionargs={'level': 1}, imagej=True, photometric='minisblack',
+    imwrite(long_path(filename), multichannel_image, compression='zlib', compressionargs={'level': 1}, imagej=True, photometric='minisblack',
             metadata={'spacing': settings.input_resZ, 'unit': 'um','axes': 'TCYX'})
 
     # Return the merged 2D multi-channel image as a numpy array

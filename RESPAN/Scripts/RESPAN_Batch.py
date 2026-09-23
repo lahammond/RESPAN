@@ -129,7 +129,7 @@ for data_dir in data_dirs:
                 
                 settings.image_restore = False
                 settings.neuron_channel = 1
-                #settings.seg_model_path = "D:/Dropbox/Github/spine-analysis/RESPAN/Models/Dataset022_SpinesDendrites/"
+                #settings.seg_model_path = "<path to a segmentation model folder>"
                 #settings.neuron_seg_model_path = "D:/nnUnet/results/Dataset816_SpinningDisk_SpinesDendritesSoma_Isotropic/"
                 settings.neuron_seg_model_path = "D:/nnUnet/results/Dataset818_Aleks_Baptiste_mixedscale_SDC_SDCiso_AiryscaledSDC_20240425_compress/"
                 

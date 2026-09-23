@@ -38,7 +38,18 @@ from skimage.io import imread, imsave, imshow, util
 from skimage.util import img_as_ubyte
 from scipy import ndimage as ndi #Distance transformation
 
-from IPython.display import clear_output, display
+try:
+    from IPython.display import clear_output, display
+except ImportError:
+    # IPython is a notebook convenience re-exported for interactive use; it is
+    # not a pipeline dependency and is absent from the packaged application
+    # and the CPU test environments. Provide inert stand-ins so importing this
+    # module (which the GUI's Run button does) never fails on its account.
+    def clear_output(*args, **kwargs):
+        pass
+
+    def display(*args, **kwargs):
+        pass
 
 
 

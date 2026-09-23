@@ -6,8 +6,8 @@ Main functions
 
 """
 __title__     = 'RESPAN'
-__version__   = '1.5.00'
-__date__      = "20 April, 2026"
+__version__   = '1.5.01'
+__date__      = "20 September, 2026"
 __author__    = 'Luke Hammond <lh2881@columbia.edu>'
 __license__   = 'MIT License (see LICENSE)'
 __copyright__ = 'Copyright © 2022 by Luke Hammond'

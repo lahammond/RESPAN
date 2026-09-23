@@ -70,7 +70,19 @@ def merge_spine_measurements(df1, df2, settings, logger):
         # dendrites whose float64 distance_map exceeds the 50 GB hard limit).
         # Without this, fillna(0) below converts those NaNs to 0, which is
         # ambiguous with "at the soma" — users can't tell skipped vs valid.
-        _nan_preserve_cols = ('geodesic_dist_to_soma',)
+        _nan_preserve_cols = (
+            'geodesic_dist_to_soma',
+            # 2026-09-20: NaN here means "this image contains no soma"
+            # (spine_and_whole_neuron_processing sets pd.NA). fillna(0) turned
+            # that into 0.0, which reads as "this spine sits on the soma".
+            'euclidean_dist_to_soma',
+            # 2026-09-20: NaN means the object has no measurable shape - a single
+            # voxel, or no mesh at all (see batch_mesh_analysis). 0.0 would read as
+            # a real object that is infinitely non-convex.
+            'spine_extent', 'spine_solidity',
+            'head_extent', 'head_solidity',
+            'neck_extent', 'neck_solidity',
+        )
         _preserved_nan_mask = {
             c: merged_df[c].isna() for c in _nan_preserve_cols if c in merged_df.columns
         }

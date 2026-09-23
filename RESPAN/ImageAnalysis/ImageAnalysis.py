@@ -12,7 +12,12 @@ __copyright__ = 'Copyright © 2024 by Luke Hammond'
 __download__  = 'http://www.github.com/lahmmond/RESPAN'
 
 
-import sitecustomize
+# CuPy crashes enumerating a malformed .dist-info; this applies the filter.
+# Lives in the package so the published source carries it - see the module
+# docstring for why it used to be a bare `import sitecustomize`.
+from RESPAN.ImageAnalysis import _cupy_metadata_fix  # noqa: F401
+from RESPAN.ImageAnalysis.label_semantics import (
+    LABEL_CHANNEL_MAP, soma_label_from_channel_map)
 import RESPAN.ImageAnalysis.Segmentation_and_Restoration as sr
 import RESPAN.ImageAnalysis.IO as io
 import RESPAN.ImageAnalysis.DaskImageAnalysis as dia
@@ -148,7 +153,7 @@ def _workspace_restore(workspace, primary_name, fallback_name):
 def _workspace_restore_zarr(workspace, primary_name, fallback_name):
     """Return zarr handle from workspace without materialization.
 
-    Phase L2 (Codex BLOCKER #4 reduction): downstream consumers that accept
+    Downstream consumers that accept
     both zarr and numpy (via slab slicing, .nbytes, .shape) should call this
     instead of `_workspace_restore`. Avoids the ~27.7 GB necks numpy alloc
     at T_LARGE (and 22 GB skeleton, etc.) when the consumer never needs
@@ -210,6 +215,7 @@ def analyze_spines(settings, locations, log, logger):
 
     spine_summary = pd.DataFrame()
 
+    n_failed = 0  # images whose processing raised; reported at the end and returned to the caller
     for file in range(len(files)):
         logger.info(f' Analyzing image {file+1} of {len(files)} \n  Raw Image: {files[file]} & Label Image: {label_files[file]}')
 
@@ -320,7 +326,7 @@ def analyze_spines(settings, locations, log, logger):
                     _select_channel_img = (settings.neuron_channel - 1)
 
             if _use_stream_entry:
-                # Codex L1 review Q2 (CONCERN): if streaming fires but
+                # If streaming fires but
                 # MemoryBudget at L405 then evaluates `neuron.shape` and
                 # decides use_chunked=False (e.g., 5-15 GiB on a 137 GB host),
                 # zarr image would flow through legacy numpy-only branches.
@@ -494,6 +500,7 @@ def analyze_spines(settings, locations, log, logger):
             # Ensure workspace is cleaned up even on crash
             _cleanup_workspace(getattr(settings, '_active_workspace', None), logger)
             settings._active_workspace = None
+            n_failed += 1
 
         if settings.shape_error == True:
             logger.info(f"!!! One or more images moved to \\Not_Processed due to having\nless than 5 Z slices. Please modify these files before reprocessing.\n")
@@ -501,7 +508,16 @@ def analyze_spines(settings, locations, log, logger):
         # Save after each image so partial results survive crashes
         spine_summary.to_csv(locations.tables + 'Detected_spines_summary.csv',index=False)
 
-    logger.info("RESPAN analysis complete.")
+    # 2026-09-19: a per-image failure is caught above so the batch can go on,
+    # but it used to end in the same "analysis complete" line as a clean run
+    # (seen on a GUI run whose only image died in neck association: empty
+    # tables, "complete" banner). Say so, and hand the count to the caller.
+    if n_failed:
+        logger.error(f"RESPAN analysis finished with ERRORS: {n_failed} of {len(files)} image(s) failed "
+                     f"(see 'ERROR processing image' above). Their tables and MIPs are missing or incomplete.")
+    else:
+        logger.info("RESPAN analysis complete.")
+    return n_failed
 
 @mp.profile_mem()
 def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings, locations, filename, log, logger):
@@ -521,19 +537,19 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
 
     # Phase L1: zarr 3D image is the chunked-streamed pre-extracted neuron
     # channel (single-channel single-volume; multi-channel deferred to post-L5
-    # per Codex BLOCKER #4). For numpy 4D image (legacy path) extract the
+    # For numpy 4D image (legacy path) extract the
     # neuron channel as a strided view. spine_vox_measurements L5036-5038
     # already handles the 3D zarr case for measurement reads.
     if hasattr(image, 'chunks'):
         if image.ndim == 3:
             neuron = image
         elif image.ndim == 4:
-            # Codex L1 review Q5 (NIT): fail-fast for 4D zarr until L5 lands
+            # Fail fast for 4D zarr until that path lands
             # multi-channel zarr support. Without L5, image[:, c, :, :] on a
             # 4D zarr at T_LARGE materializes 55 GB numpy — defeats Phase L1.
             raise NotImplementedError(
                 f"Phase L1: 4D zarr image not supported until L5 (multi-channel "
-                f"deferred per Codex BLOCKER #4). Got ndim=4 zarr shape={image.shape}. "
+                f"not yet supported). Got ndim=4 zarr shape={image.shape}. "
                 f"L1 only produces 3D zarr (single neuron channel) at the entry.")
         else:
             raise ValueError(
@@ -553,7 +569,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         # pointed at the same base_dir would (a) double-log the cache path
         # and (b) risk one instance's cleanup() wiping the other's arrays.
         _entry_ws = getattr(settings, '_active_workspace', None)
-        # Codex L1 review Q7 (BUG): isinstance check alone is insufficient.
+        # An isinstance check alone is insufficient.
         # A failed prior file's run can leave _active_workspace pointing at a
         # workspace whose base_dir was already cleaned up, OR whose filename
         # corresponds to a different image. Verify both before reuse.
@@ -639,13 +655,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
             settings.mesh_analysis = True
 
     # Extract label channels — zarr slab-by-slab for large volumes, numpy for small
-    _label_channel_map = {
-        1: {1: 'spines', 2: 'dendrites', 3: 'soma'},
-        2: {1: 'dendrites', 2: 'soma', 10: 'spines'},
-        3: {1: 'spines', 2: 'dendrites', 3: 'soma', 4: 'necks'},
-        4: {1: 'dendrites', 2: 'spine_cores', 3: 'spine_membranes', 4: 'necks', 5: 'soma'},
-    }
-    channel_map = _label_channel_map[settings.model_type]
+    channel_map = LABEL_CHANNEL_MAP[settings.model_type]
 
     if use_chunked:
         logger.info("   Extracting label channels to zarr (slab-by-slab)...")
@@ -666,13 +676,29 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
             pass  # necks already in _label_zarrs
         elif necks is None:
             necks = np.zeros(1, dtype=np.uint8)
-        # Precompute soma_present from slab scan (avoids np.max on full zarr)
+        # Precompute soma_present from slab scan (avoids np.max on full zarr).
+        # 2026-09-20: this indexed channel_map BY POSITION -
+        # `channel_map.get(3, channel_map.get(5, -1))` - but the map is
+        # {label value: class name}, so it returned a NAME ('spine_membranes' for
+        # model type 4, 'soma' for types 1 and 3, -1 for type 2) and the slab was
+        # compared against a STRING. NumPy answers all-False, so soma_present was
+        # False on EVERY chunked run for EVERY model type. Measured on T4 with
+        # Dataset226: 1,289,594 soma voxels present, soma is reported absent.
+        # The cost was not only euclidean_dist_to_soma (0.0 before v1.5.1, NaN
+        # after): soma_present=False also nulls _soma_arg, so no soma KDTree is
+        # built and geodesic distances are measured from the corner-most dendrite
+        # voxel while still being named geodesic_dist_to_soma.
+        # Derive the label from the map instead of assuming its position.
+        _soma_label = soma_label_from_channel_map(channel_map)
         soma_present = False
-        for _z in range(0, labels_vol.shape[0], 128):
-            _ze = min(_z + 128, labels_vol.shape[0])
-            if np.any(labels_vol[_z:_ze] == channel_map.get(3, channel_map.get(5, -1))):
-                soma_present = True
-                break
+        if _soma_label is not None:
+            for _z in range(0, labels_vol.shape[0], 128):
+                _ze = min(_z + 128, labels_vol.shape[0])
+                if np.any(labels_vol[_z:_ze] == _soma_label):
+                    soma_present = True
+                    break
+        if soma_present:
+            logger.info(f"    Soma present (label {_soma_label}).")
         del labels_vol
         gc.collect()
     else:
@@ -744,7 +770,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
             # Always use full-image adaptive EDT — never chunk this, as halo-limited
             # chunks would silently underestimate distances for distant spines.
             logger.info("   Calculating soma distance...")
-            # Phase L6 (Codex final audit): plumb workspace + dest_name when
+            # Plumb workspace + dest_name when
             # chunked, so soma EDT writes the bool intermediate to the
             # workspace (not system temp) AND streams the upsample directly
             # to a workspace zarr (avoids 120 GB float32 numpy peak at T_LARGE).
@@ -856,7 +882,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
                                            logger)  # binary image, erosion value (0 for no erosion)
         else:
             logger.info("    Analyzing spines using cores and membranes...")
-            # Phase L4 (Codex BLOCKER #3): for zarr cores/membranes + per-cluster
+            # For zarr cores/membranes + per-cluster
             # path (volume_bytes > 2 GB inside the function), pass the zarr
             # handles directly. The function's per-cluster branch uses bbox
             # crops via `cores[sl]` / `membranes[sl]` which is zarr-safe — no
@@ -909,7 +935,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
 
         # Defer labeled_dendrites restore until after neck processing (saves 20 GB during necks).
         # dendrites_mask is still needed for neck processing — keep as zarr
-        # handle. Phase L3 (Codex BLOCKER #4 reduction): all consumers below
+        # handle. All consumers below
         # use slab/bbox reads (L1127 _dm_slab[_z:_ze], L1558 dendrites_mask
         # [_sz:_sze], L3230 dendrites_mask[dsl]) — none require contiguous
         # numpy. array_to_numpy here previously alloc'd ~520 MB at T4 stream-
@@ -1034,7 +1060,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         # disable neck analysis for very large datasets
         if settings.neck_generation == False:
             logger.info(f"     Image shape is {spines_filtered.shape}. Neck analysis has been disabled.")
-            # Phase L2 (Codex CONCERN, class a): allocate as zarr when
+            # Allocate as zarr when
             # spines_filtered is zarr-backed (chunked path). For T_LARGE the
             # legacy np.zeros_like would alloc 27.7 GB numpy on the disabled-
             # neck branch — same dtype as spines_filtered.
@@ -1053,7 +1079,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
                 # is 2e9 (matches T7+ natively).
                 _neck_thresh = int(getattr(settings, 'neck_streaming_threshold_bytes', int(2e9)))
                 if use_chunked and necks.nbytes > _neck_thresh:
-                    # Phase L2 (Codex BLOCKER #5): write CC output directly to a
+                    # Write CC output directly to a
                     # workspace zarr and keep `neck_labels` as a zarr handle.
                     # Downstream consumers (the slab-loop at the if use_chunked
                     # branch below, and associate_spines_with_necks_gpu via the
@@ -1285,7 +1311,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
                 # Build connected_necks slab-by-slab. Avoids two 20 GB np.maximum
                 # temporaries + the spine-overlap zeroing temporary. Source for
                 # _remaining_assigned is zarr (chunked) or numpy (non-chunked).
-                # Phase L2 (Codex BLOCKER #5): np.zeros_like on a zarr-backed
+                # np.zeros_like on a zarr-backed
                 # neck_labels_updated would alloc full-volume int32 numpy
                 # (~111 GB at T_LARGE). When chunked, write into a workspace
                 # zarr instead. Downstream consumers (bridges, drop filters,
@@ -1309,7 +1335,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
                 # collects per-label bboxes and keeps a few per-spine crops in
                 # RAM, so freeing the ~22 GB numpy buffer (on T7) here avoids
                 # stacking two full-volume int32 arrays simultaneously.
-                # (Codex review flagged this as a T7 OOM risk.)
+                # (This is a T7 OOM risk.)
                 del neck_labels_updated
                 gc.collect()
                 # Do NOT mask with dendrites_mask — necks must touch the dendrite
@@ -2011,14 +2037,28 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
                 _n_partial = int(_partial_mask.sum())
                 if _keep_partial:
                     # Zero out neck metrics for partial spines.
+                    # 2026-09-20: except the two DIMENSIONLESS shape ratios. Zero is
+                    # a real solidity/extent value - a maximally non-convex object -
+                    # so writing it here dragged avg_neck_solidity down in the
+                    # summary tables (24 of 84 rows on the T2 image) and contradicted
+                    # the NaN batch_mesh_analysis now writes for an object with no
+                    # measurable shape. The dimensional columns keep 0, where it
+                    # reads as "no neck" consistently with neck_vol = 0 flagging
+                    # exactly these rows.
+                    _neck_shape_cols = ('neck_extent', 'neck_solidity')
                     _neck_cols = [c for c in spine_table.columns
                                   if c.startswith('neck_') and c != 'spine_type']
                     for _c in _neck_cols:
-                        spine_table.loc[_partial_mask, _c] = 0
+                        if _c in _neck_shape_cols:
+                            spine_table[_c] = spine_table[_c].astype('float64')
+                            spine_table.loc[_partial_mask, _c] = float('nan')
+                        else:
+                            spine_table.loc[_partial_mask, _c] = 0
                     logger.info(
                         f"       Zeroed neck metrics for {_n_partial} partial-spine "
-                        f"rows ({len(_neck_cols)} neck_* columns); distance + head "
-                        f"measurements retained.")
+                        f"rows ({len(_neck_cols)} neck_* columns; neck_extent and "
+                        f"neck_solidity set to NaN - a ratio has no zero-valued "
+                        f"meaning); distance + head measurements retained.")
                 else:
                     _before = len(spine_table)
                     spine_table = spine_table[~_partial_mask].reset_index(drop=True)
@@ -2621,8 +2661,6 @@ def spine_detection_4d(spines, erode, remove_borders, logger):
 
 @mp.profile_mem()
 def calculate_dendrite_length_and_volume_fast(labeled_dendrites, skeleton, logger):
-    skeletonize_time = time.time()
-
     # Slab-based skeleton-coord + label extraction. Works for numpy and zarr inputs.
     # Avoids the previous np.nonzero(skeleton) + labeled_dendrites[fancy_index] path
     # which materialized the full skeleton volume and then scanned all of
@@ -2660,9 +2698,6 @@ def calculate_dendrite_length_and_volume_fast(labeled_dendrites, skeleton, logge
     else:
         skeleton_coords = np.empty((0, 3), dtype=np.int64)
         labeled_skeletons = np.empty((0,), dtype=np.int64)
-
-    coords_time = time.time()
-    print(f"Coordinate + label extraction done in {coords_time - skeletonize_time:.2f} seconds")
 
     # Reconcile dend_counts across slabs — each slab's bincount may be shorter
     # than dend_max + 1. Sum into a uniform-length array.
@@ -3025,7 +3060,7 @@ def associate_spines_with_necks_gpu(spines, necks, logger, workspace=None,
     # lower the streaming gate so T4/T6 exercise the streaming path without a
     # synthetic fixture. Production default is 5e8 (matches T7 natively).
     _assoc_thresh = int(getattr(settings, 'association_streaming_threshold_voxels', 500_000_000)) if settings is not None else 500_000_000
-    # Phase L2 (Codex BLOCKER #6): when chunked, hand a result_name so the
+    # When chunked, hand a result_name so the
     # per-component helper allocates `result` as a workspace zarr instead of
     # a 22 GB / 111 GB int32 numpy. Pass 1 result is needed by Pass 2 and
     # downstream extend_objects_GPU; both already accept zarr inputs.
@@ -3443,7 +3478,7 @@ def bridge_spine_neck_via_pathfinding(connected_necks, spines_filtered,
         intensity_sub = np.asarray(intensity[dsl])
 
         # Other spine heads in this bbox are FORBIDDEN for the bridge path
-        # (Codex finding #2 — same routing failure mode as extend_objects_GPU).
+        # (Same routing failure mode as extend_objects_GPU.)
         obstacle_sub = (sp_crop > 0) & (sp_crop != label_value)
 
         try:
@@ -4088,7 +4123,7 @@ def flag_spurious_necks(connected_necks, spines_filtered, original_nnunet_neck_m
 
     `intensity_ratio` is recorded for visibility but is not part of the gate —
     pathfinder-generated paths inherently follow bright voxels, so intensity
-    is a poor discriminator. See Codex review and run 7 distribution analysis.
+    is a poor discriminator.
 
     Acts on `settings.spurious_exclude_mode`:
       "neck_only" — removes only the neck voxels; spine head kept. Default.
@@ -5480,7 +5515,7 @@ def calculate_dend_ID_and_geo_distance(labeled_dendrites, labeled_spines, skelet
                                           sl[2].start, sl[2].stop)
 
             # Zarr output for geodesic image (MIP reads via slab accumulation)
-            # Codex final audit CONCERN 3 (2026-04-29): write to active
+            # Write to active
             # workspace when available so geodesic zarr lands on the same
             # filesystem as the rest of the cache (E:/respan_workspace),
             # cleans up via workspace.cleanup() at end of run, and avoids
@@ -5511,7 +5546,7 @@ def calculate_dend_ID_and_geo_distance(labeled_dendrites, labeled_spines, skelet
                     continue
                 z0, z1, y0, y1, x0, x1 = dend_bboxes[dendrite]
 
-                # Phase L7 (Codex CONCERN #11): for giant-bbox dendrites
+                # For giant-bbox dendrites
                 # (single dendrite spanning most of the volume at T_LARGE),
                 # `np.array(labeled_dendrites[bbox])` materializes the full
                 # bbox numpy — could be 60+ GB int32. Slab-fill the bool mask
@@ -5521,7 +5556,7 @@ def calculate_dend_ID_and_geo_distance(labeled_dendrites, labeled_spines, skelet
                 _bbox_bytes_int32 = _bbox_voxels * 4
                 _bbox_bytes_f64 = _bbox_voxels * 8
                 _LARGE_BBOX_THRESHOLD = 1 * (1024 ** 3)  # 1 GB int32 / 2 GB f64
-                # Phase L7+ guard (Codex final BLOCKER 2026-04-29): the geodesic
+                # Guard: the geodesic
                 # itself allocates a float64 distance_map of bbox shape inside
                 # compute_geodesic_distance_map (np.full(shape, inf)). For a
                 # 50% T_LARGE bbox this would be 240 GB float64 — fatal even
@@ -5852,16 +5887,6 @@ def analyze_spines_batch_tiled(spine_labels_vol, head_labels_vol, dendrite, neur
 
 @mp.profile_mem()
 def filter_duplicated_spine_results(df):
-    print("Diagnostic information:")
-    print(f"DataFrame shape: {df.shape}")
-    print(f"Column names: {df.columns.tolist()}")
-    print(f"Index name: {df.index.name}")
-    print(f"Index type: {type(df.index)}")
-    print("Data types of columns:")
-    print(df.dtypes)
-    print("\nFirst few rows of the DataFrame:")
-    print(df.head())
-
     # Check if 'label' is already the index
     if df.index.name == 'label':
         df = df.reset_index()
@@ -5884,10 +5909,6 @@ def filter_duplicated_spine_results(df):
 
     # Remove the temporary sort column
     df_final = df_final.drop('temp_sort', axis=1)
-
-    print(f"Original shape: {df.shape}")
-    print(f"Final shape after deduplication: {df_final.shape}")
-
 
     return df_final
 
@@ -6523,7 +6544,7 @@ def pathfinding_v3b(object_subvolume_gpu, target_subvolume_gpu, intensity_image_
         neighbouring spine heads — biologically wrong and visible at MIP
         scale as necks skirting/clipping adjacent heads. Enforced AFTER
         Gaussian smoothing of the cost grid so the smoothing kernel does not
-        smear inf-values into legitimate corridors (Codex finding).
+        smear inf-values into legitimate corridors.
     """
     # Early validation: check for start/end candidates BEFORE expensive GPU ops.
     # Transfer small intermediate results to CPU for candidate checking.
@@ -6598,7 +6619,7 @@ def pathfinding_v3b(object_subvolume_gpu, target_subvolume_gpu, intensity_image_
     sigma = [0.3, 0.5, 0.5]
     augmented_map_gpu = cp_ndimage.gaussian_filter(augmented_map_gpu, sigma)
 
-    # Obstacle enforcement (post-smoothing per Codex finding) — voxels in
+    # Obstacle enforcement (applied post-smoothing) — voxels in
     # `obstacle_subvolume_gpu` get +inf cost so the greedy walk never enters
     # them. Applied AFTER gaussian_filter so the smoothing kernel does not
     # smear large values into legitimate neck corridors.
@@ -7624,8 +7645,6 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
             verts = cp.asarray(verts) * cp.asarray(scaling)
             faces = cp.asarray(faces)
 
-            voxel_vol = voxel_count * scaling[0] * scaling[1] * scaling[2]
-
             volume = mesh_volume(verts, faces)
             surface_area = measure_surface_area_gpu(verts, faces)
 
@@ -7633,8 +7652,22 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
             bbox_dims = (verts.max(axis=0) - verts.min(axis=0))
             bbox_vol = float(cp.prod(bbox_dims))
             hull_vol = float(ConvexHull(cp.asnumpy(verts)).volume)
-            extent = voxel_vol / bbox_vol if bbox_vol else 0.0
-            solidity = voxel_vol / hull_vol if hull_vol else 0.0
+            # 2026-09-20: extent and solidity used a voxel-counted numerator
+            # (voxel_count x voxel size) against denominators derived from the
+            # marching-cubes vertices. The isosurface sits half a voxel inside the
+            # voxel block, so the mesh bbox and hull bound a smaller region than the
+            # voxel count implies and both ratios could exceed 1 (measured on T2:
+            # head solidity to 2.12, neck to 6.00, spine to 1.09). Take the numerator
+            # from the same geometry as the denominator.
+            # A single voxel has no measurable shape - marching cubes turns it into
+            # an octahedron of one sixth of a voxel - so report NaN rather than a
+            # ratio that cannot be compared with anything.
+            if voxel_count <= 1:
+                extent = float('nan')
+                solidity = float('nan')
+            else:
+                extent = volume / bbox_vol if bbox_vol > 0 else float('nan')
+                solidity = volume / hull_vol if hull_vol > 0 else float('nan')
 
             #cov = cp.cov(verts, rowvar=False)
             #eigvals = cp.linalg.eigvalsh(cov)
@@ -7647,8 +7680,6 @@ def batch_mesh_analysis(batch_data, start_coords, closest_points, pad_amounts, o
                     length, min_width, max_width, mean_width =  1*scaling[1], 1*scaling[1],1*scaling[1], 1*scaling[1]
                     #create volume by multplying voxel by scaling XYZ dims
                     volume = scaling[0] * scaling[1] * scaling[2]
-                    if prefix == "neck" and i == 0:
-                        print(f"Volume is {volume} for {prefix} {i}")
                 if calc_midline and voxel_count > 1:
                     length, min_width, max_width, mean_width, skeleton_result = mesh_neck_width_and_length_closest(
                         subvol, verts, closest_point, logger, scaling)
@@ -8157,22 +8188,22 @@ def adaptive_distance_transform(image, logger, threshold_size=20 * 2000 * 2000,
                                   workspace=None, dest_name=None):
     """Adaptive (downsampling-based) Euclidean distance transform.
 
-    Phase L6 (Codex BLOCKER #2 + lesson #52): the image-domain `astype(bool)`
+    The image-domain `astype(bool)`
     and skimage.resize() calls are fatal at T_LARGE — `.astype(bool)` on a
     27.7 GB zarr materializes 27.7 GB bool numpy, and skimage.resize allocates
     a 222 GB float64 internal buffer for 29.8B-voxel inputs. The chunked path
     below handles both:
       - For zarr or numpy.size > threshold: slab-iterate bool conversion into
         a smaller intermediate, call `chunked_resize_3d` (grid_mode=True →
-        byte-identical to skimage at small scale per Codex BUG fix), run EDT
+        byte-identical to skimage at small scale), run EDT
         on the downsampled bool numpy (fits in RAM), upsample via
         `chunked_resize_3d`.
       - For small numpy: legacy skimage.resize path preserved (byte-identical
         T2/T4 baseline).
 
-    Note: per CLAUDE.md "Chunked EDT Design Rules", soma_distance with
-    typical magnitudes 1000+ voxels accepts ±20 voxel error from downsample
-    rounding. dendrite_distance uses chunked GPU EDT (no downsample) for
+    Note: soma_distance, with typical magnitudes of 1000+ voxels, accepts
+    ±20 voxel error from downsample rounding. dendrite_distance uses
+    chunked GPU EDT (no downsample) for
     stricter tolerance. This function should ONLY be called for soma /
     other-where-coarse-OK measurements.
     """
@@ -8219,7 +8250,7 @@ def adaptive_distance_transform(image, logger, threshold_size=20 * 2000 * 2000,
     # bool array sized for the downsampled shape via per-slab block sums.
     # At T_LARGE: input 27.7 GB uint8 zarr -> ~85 MB downsampled bool (scale~7).
     import RESPAN.ImageAnalysis.ChunkedProcessing as _chunked
-    # Codex final audit (2026-04-29): workspace was previously read via
+    # Workspace was previously read via
     # `getattr(image, '_respan_workspace', None)` but no upstream code sets
     # that attribute, so the chunked path always fell back to system temp
     # (~30 GB at T_LARGE — wrong filesystem, wrong cleanup semantics). Now
@@ -8270,7 +8301,7 @@ def adaptive_distance_transform(image, logger, threshold_size=20 * 2000 * 2000,
     gc.collect()
 
     # Step 4: upsample back to original shape.
-    # Codex final audit CONCERN: at T_LARGE the full-volume float32 alloc is
+    # At T_LARGE the full-volume float32 alloc is
     # 30B × 4 = 120 GB → tight margin on 137 GB host. When workspace +
     # dest_name are provided, stream the upsample directly into a zarr to
     # avoid the peak. Caller (e.g. analyze_spines soma_distance call) then
@@ -8375,8 +8406,6 @@ def categorize_spine(L, dH, dN,
 def create_kdtree_from_skeleton(skeleton_coords, skeleton_labels, sampling_method='systematic', sampling_param=4,
                                 skeleton_volume=None):
 
-    print(f'Skeleton points: {skeleton_coords.shape[0]}, Skeleton labels: {skeleton_labels.shape[0]}')
-
     # Optional: Downsample the skeleton points if needed
     if sampling_method == 'topology':
         skeleton_coords, skeleton_labels = downsample_skeleton_preserving_topology(
@@ -8396,14 +8425,8 @@ def create_kdtree_from_skeleton(skeleton_coords, skeleton_labels, sampling_metho
         raise ValueError('Invalid sampling method')
     # If sampling_method is None, skip downsampling
 
-    print(f'Final skeleton points after downsampling: {skeleton_coords.shape[0]}')
     # Build the KDTree
-    print("Building KDTree...")
-    start_tree_time = time.time()
     tree = cKDTree(skeleton_coords)
-    tree_time = time.time()
-    print(f"KDTree built in {tree_time - start_tree_time:.2f} seconds")
-    print(f'Tree data: {tree.data.shape}')
     return tree, skeleton_labels
 
 
@@ -9173,9 +9196,6 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
                 padded_x_end = int(min(image.shape[2], x_end + padding_x))
 
                 #print(padded_z_start,padded_z_end, padded_y_start, padded_y_end, padded_x_start,padded_x_end)
-                print("Image shape:", image.shape)
-                print("Labels shape:", labels.shape)
-
                 block_image = image[padded_z_start:padded_z_end, padded_y_start:padded_y_end, padded_x_start:padded_x_end]
                 block_spines_filtered = spines_filtered[padded_z_start:padded_z_end, padded_y_start:padded_y_end, padded_x_start:padded_x_end]
                 block_labels = labels[padded_z_start:padded_z_end, padded_y_start:padded_y_end, padded_x_start:padded_x_end]
@@ -9212,7 +9232,6 @@ def create_spine_arrays_in_blocks(image, labels, spines_filtered, table, volume_
 
 
     vol_array = np.stack(vol_list, axis=0).transpose(0, 1, 4, 2, 3)
-    print(vol_array.shape)
 
     #vol_array = np.transpose(vol_array, (0, 2, 1, 3, 4))
     #mip_label_filtered_array = np.stack(mip_label_filtered_list, axis=0)

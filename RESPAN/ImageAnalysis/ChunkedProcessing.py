@@ -28,13 +28,71 @@ __license__ = 'GPL-3.0 License (see LICENSE)'
 import os
 import shutil
 import math
+import logging
 import numpy as np
 import psutil
 import zarr
 from numcodecs import Blosc
 
-import cupy as cp
-from cupyx.scipy.ndimage import distance_transform_edt as gpu_edt
+try:
+    import cupy as cp
+    from cupyx.scipy.ndimage import distance_transform_edt as gpu_edt
+    _GPU_AVAILABLE = True
+except ModuleNotFoundError as _cupy_import_error:
+    # Tolerate only a genuinely ABSENT CuPy (CPU-only hosts, e.g. CI runners).
+    #
+    # An installed-but-BROKEN CuPy — mismatched CUDA DLLs, wrong nvrtc version,
+    # the exact failure this project pins CUDA_PATH to avoid — raises plain
+    # ImportError, not ModuleNotFoundError. That must keep failing loudly right
+    # here: swallowing it would resurface later as a misleading "install cupy"
+    # message on a machine where CuPy is in fact installed.
+    _GPU_AVAILABLE = False
+    logging.getLogger(__name__).warning(
+        "CuPy not found (%s). GPU code paths in ChunkedProcessing are disabled; "
+        "only CPU-safe operations can run in this process.", _cupy_import_error
+    )
+
+    class _CuPyUnavailable:
+        """Stand-in for cupy on hosts where it is not installed.
+
+        This is a backstop, not the primary guard. GPU entry points call
+        _require_cupy() and fail with a direct message. Two call sites
+        (MemoryBudget.__init__ and the VRAM probe in
+        distance_transform_gpu_chunked) deliberately wrap their cupy call in
+        `except Exception` to degrade gracefully, and depend on this object
+        raising rather than being None.
+
+        Note this does NOT cover associate_spines_with_necks_per_component,
+        which re-imports cupy locally and so shadows `cp` for its whole body.
+        """
+
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                # Let hasattr()/introspection behave normally.
+                raise AttributeError(name)
+            raise RuntimeError(
+                "This operation requires CuPy and an NVIDIA GPU (tried to use "
+                "cupy.{}). Install cupy-cuda11x to run it, or restrict a test "
+                "run to CPU-safe cases with: pytest -m \"not gpu\"".format(name)
+            )
+
+    cp = _CuPyUnavailable()
+
+    def gpu_edt(*_args, **_kwargs):
+        raise RuntimeError(
+            "GPU distance transform requires CuPy and an NVIDIA GPU. "
+            "Install cupy-cuda11x to run it."
+        )
+
+
+def _require_cupy(operation):
+    """Fail fast, and clearly, when a GPU-only entry point is called on a CPU host."""
+    if not _GPU_AVAILABLE:
+        raise RuntimeError(
+            "{} requires CuPy and an NVIDIA GPU, which are not available in this "
+            "process. Install cupy-cuda11x, or restrict a test run to CPU-safe "
+            "cases with: pytest -m \"not gpu\"".format(operation)
+        )
 
 from scipy import ndimage
 from scipy.ndimage import distance_transform_edt
@@ -425,7 +483,7 @@ def tiff_to_zarr_3d(tiff_path, workspace, name, *, chunks=None, slab_pages=8,
        reads (``mm[z_start:z_end, ...]``) load only the requested bytes.
        This is the ONLY path that handles ImageJ "big TIFF" hyperstacks
        above 4 GiB, which store all Z planes in a single IFD with
-       ``len(tif.pages) == 1`` (Codex BLOCKER 2026-04-29). T_LARGE's 55 GB
+       ``len(tif.pages) == 1``. T_LARGE's 55 GB
        raw is exactly this case.
 
     2. **per-page fallback** — for compressed or multi-IFD TIFFs where
@@ -863,6 +921,8 @@ def distance_transform_gpu_chunked(mask_zarr, output_zarr, spacing, max_dist=Non
         Core chunk size for processing.
     logger : logging.Logger, optional
     """
+    _require_cupy("distance_transform_gpu_chunked")
+
     shape = mask_zarr.shape
 
     if max_dist is None:
@@ -916,7 +976,7 @@ def distance_transform_gpu_chunked(mask_zarr, output_zarr, spacing, max_dist=Non
 
     full_shape = tuple(c + 2 * h for c, h in zip(core_size, halo))
     chunk_mb = int(np.prod(full_shape)) * bytes_per_voxel_edt / MB
-    # CuPy PBA EDT peak VRAM is ~13-16x volume size (lesson #22). Pre-compute
+    # CuPy PBA EDT peak VRAM is ~13-16x volume size. Pre-compute
     # the predicted GPU peak so we can warn or refuse if it exceeds available
     # VRAM — common failure mode is users setting spine_dist too high for
     # their GPU (e.g., spine_dist=5 + 45nm XY = 333-vox XY halo → 9.8 GB
@@ -2220,6 +2280,15 @@ def associate_spines_with_necks_per_component(reference, targets, logger,
         to a reference get that reference's label. Reference voxels retain
         their labels. Unassigned (noise / dropped) target voxels stay at 0.
     """
+    _require_cupy("associate_spines_with_necks_per_component")
+
+    # KEEP THIS LOCAL IMPORT. It is not redundant with the module-level one.
+    # Assigning `cp`/`gpu_edt` anywhere in this function makes them local for
+    # the entire body, which shadows the module-level names — including the
+    # `except cp.cuda.memory.OutOfMemoryError:` clause below. If this import is
+    # removed, that except clause would resolve `cp` to the _CuPyUnavailable
+    # stand-in on a CPU-only host and raise from __getattr__ while Python is
+    # matching the exception, masking the original error.
     import cupy as cp
     from cupyx.scipy.ndimage import distance_transform_edt as gpu_edt
 
@@ -2237,7 +2306,7 @@ def associate_spines_with_necks_per_component(reference, targets, logger,
     target_cc = None    # zarr (streaming) or numpy (small)
     bboxes = None       # dict {label: [z0,z1,y0,y1,x0,x1]} or list from find_objects
 
-    # Phase L2 (Codex BLOCKER #6): when workspace + result_name provided,
+    # When workspace + result_name are provided,
     # allocate `result` as a zarr-backed array. Avoids the ~22 GB int32 numpy
     # materialization in _copy_reference_to_result at T7 / 111 GB at T_LARGE.
     # _write_result_subvolume below dispatches numpy-view vs zarr-RMW based
@@ -2416,7 +2485,7 @@ def associate_spines_with_necks_per_component(reference, targets, logger,
         # along the Voronoi boundary instead of being stamped uniformly with
         # one label — fixing the "outer spine's neck grows into inner spine's
         # head" pattern (T2 Spine 52/49 case: 13 voxels of neck 52 were
-        # physically inside spine 49's territory). Codex audit
+        # physically inside spine 49's territory). Audit
         # (session a79e2a036e4cfc098) confirmed this is the correct
         # semantic — Voronoi tessellation by nearest reference is the
         # standard literature pattern (Imaris, Spinifel, NeuTu,
@@ -2477,7 +2546,7 @@ def associate_spines_with_necks_per_component(reference, targets, logger,
 def _copy_reference_to_result(reference, dest_zarr=None):
     """Copy `reference` into a result destination.
 
-    Phase L2 (Codex BLOCKER #2): when `dest_zarr` is provided, copy reference
+    When `dest_zarr` is provided, copy reference
     slab-by-slab into the zarr (no full-volume numpy alloc — avoids the
     ~22 GB int32 transient at T7, ~111 GB at T_LARGE). Otherwise the legacy
     behavior: allocate a fresh numpy array.
@@ -2541,7 +2610,7 @@ def _copy_reference_to_result(reference, dest_zarr=None):
 def _write_result_subvolume(result, dsl, mask, value):
     """Write `value` into `result[dsl]` wherever `mask` is True.
 
-    Phase L2 (Codex BLOCKER #3): handles both numpy and zarr `result`.
+    Handles both numpy and zarr `result`.
 
     For numpy: ``result[dsl]`` returns a view; direct mask-assignment is in-place.
     For zarr: ``result[dsl]`` returns a numpy COPY (not a view), so the legacy
@@ -2674,7 +2743,7 @@ def bridge_spine_neck_gaps(connected_necks, spines_filtered, dendrites_mask,
                         f"got shape {shape}. Skipping.")
         return connected_necks
 
-    # --- Dtype safety (Codex Q9) ---
+    # --- Dtype safety ---
     # If spines_filtered uses a wider integer type than connected_necks (e.g.,
     # spines=int64, necks=int32), silent wrap-around could corrupt labels when
     # we cast spine labels into the neck dtype. Assert safety or abort.
@@ -2688,7 +2757,7 @@ def bridge_spine_neck_gaps(connected_necks, spines_filtered, dendrites_mask,
             f"to avoid silent truncation — promote connected_necks dtype to fix.")
         return connected_necks
 
-    # --- Collect per-label bboxes without allocating a union volume (Codex Q6) ---
+    # --- Collect per-label bboxes without allocating a union volume ---
     # Previous impl allocated a full-volume `union_labels` (~22 GB at T7) while
     # `neck_labels_updated` (also ~22 GB) was still live, risking OOM. Instead,
     # use find_objects_streaming — slab-iterates the zarr/numpy volume and
@@ -2701,7 +2770,7 @@ def bridge_spine_neck_gaps(connected_necks, spines_filtered, dendrites_mask,
     if not all_labels:
         return connected_necks
 
-    # NOTE (Codex Q3 — anisotropic closing): we intentionally use a voxel-space
+    # NOTE (anisotropic closing): we intentionally use a voxel-space
     # 26-connected structuring element here, not physical-space. At T4 anisotropy
     # (Z=0.15, XY=0.045) a Z-voxel is ~3× an XY-voxel in physical distance, so a
     # 1-iteration closing can bridge slightly more in Z than XY. The gap being

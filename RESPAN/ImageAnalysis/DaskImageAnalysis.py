@@ -14,7 +14,10 @@ __download__  = 'http://www.github.com/lahmmond/RESPAN'
 
 
 
-import sitecustomize
+# CuPy crashes enumerating a malformed .dist-info; this applies the filter.
+# Lives in the package so the published source carries it - see the module
+# docstring for why it used to be a bare `import sitecustomize`.
+from RESPAN.ImageAnalysis import _cupy_metadata_fix  # noqa: F401
 
 import RESPAN.ImageAnalysis.IO as io
 import RESPAN.ImageAnalysis.ImageAnalysis as imgan
